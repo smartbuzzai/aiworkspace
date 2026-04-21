@@ -32,6 +32,7 @@ import {
 import Settings from "./Settings";
 import InboxView from "./InboxView";
 import CRMView from "./CRMView";
+import CalendarView from "./CalendarView";
 
 const theme = {
   navy950:"#0a0f1e", navy900:"#0f172a", navy800:"#1e293b",
@@ -202,7 +203,7 @@ export default function App({ user, onLogout }) {
           {view === "dashboard" && <Dashboard user={user} />}
           {view === "inbox"     && <InboxView />}
           {view === "crm"       && <CRMView />}
-          {view === "calendar"  && <ResourceList endpoint="events" render={renderEvent} empty="No events scheduled." />}
+          {view === "calendar"  && <CalendarView />}
           {view === "projects"  && <ResourceList endpoint="projects" render={renderProject} empty="No projects yet." />}
           {view === "library"   && <ResourceList endpoint="files" render={renderFile} empty="No files uploaded." />}
           {view === "settings"  && <Settings user={user} />}
@@ -313,28 +314,153 @@ const card = () => ({
 
 // ─── Dashboard ───────────────────────────────────────────────
 function Dashboard({ user }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    async function load() {
+      const today = new Date().toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const [eventsRes, tasksRes, threadsRes] = await Promise.all([
+        fetch(`/api/events?from=${today}T00:00:00Z&to=${tomorrow}T00:00:00Z`, { credentials:"include" }).then(r => r.json()).catch(() => ({ events:[] })),
+        fetch("/api/tasks", { credentials:"include" }).then(r => r.json()).catch(() => ({ tasks:[] })),
+        fetch("/api/emails/threads?unread=true", { credentials:"include" }).then(r => r.json()).catch(() => ({ threads:[] })),
+      ]);
+      setData({
+        events: eventsRes.events || [],
+        tasks: (tasksRes.tasks || []).filter(t => t.status !== "done" && t.status !== "cancelled"),
+        unreadThreads: threadsRes.threads || [],
+      });
+    }
+    load();
+  }, []);
+
+  if (!data) return <div style={{ color:theme.navy500 }}>Loading dashboard…</div>;
+
+  const highTasks = data.tasks.filter(t => t.priority === "high");
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
+    return "Good evening";
+  })();
+
+  return (
+    <div style={{ maxWidth:1200, display:"flex", flexDirection:"column", gap:20 }}>
+      {/* Hero banner */}
+      <div style={{
+        background:`linear-gradient(135deg, ${theme.navy950}, #1e3a5f, ${theme.navy900})`,
+        borderRadius:20, padding:28, color:theme.white
+      }}>
+        <div style={{
+          display:"inline-flex", alignItems:"center", gap:7,
+          background:"rgba(59,130,246,0.12)",
+          border:"1px solid rgba(59,130,246,0.22)",
+          padding:"5px 12px", borderRadius:20,
+          fontSize:12, fontWeight:600, color:theme.blue400, marginBottom:16
+        }}>
+          <Sparkles size={12} /> {new Date().toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" })}
+        </div>
+        <h2 style={{ fontSize:26, fontWeight:800, letterSpacing:"-0.8px", margin:0 }}>
+          {greeting}, {user.name || user.email.split("@")[0]}.
+        </h2>
+        <p style={{ color:theme.navy300, marginTop:10, fontSize:14, lineHeight:1.6, margin:"10px 0 0" }}>
+          {data.events.length} event{data.events.length !== 1 ? "s" : ""} today
+          {" · "}{highTasks.length} high-priority task{highTasks.length !== 1 ? "s" : ""}
+          {" · "}{data.unreadThreads.length} unread thread{data.unreadThreads.length !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      {/* Widgets grid */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(320px, 1fr))", gap:16 }}>
+        {/* Today's Events */}
+        <DashWidget title="Today's Schedule" icon={Calendar} count={data.events.length} emptyText="No events today">
+          {data.events.slice(0, 5).map(e => (
+            <div key={e.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${theme.navy100}` }}>
+              <div style={{
+                width:42, textAlign:"center", fontSize:12, fontWeight:700, color:theme.blue600,
+                fontFamily:"'JetBrains Mono', monospace"
+              }}>
+                {new Date(e.starts_at).toLocaleTimeString("en-US", { hour:"numeric", minute:"2-digit" })}
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:600, color:theme.navy900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.title}</div>
+                {e.location && <div style={{ fontSize:11, color:theme.navy500 }}>{e.location}</div>}
+              </div>
+              <div style={{
+                fontSize:10, fontWeight:600, padding:"3px 8px", borderRadius:6,
+                background: e.event_type === "meeting" ? "rgba(59,130,246,0.1)" : e.event_type === "focus" ? "rgba(16,185,129,0.1)" : "rgba(100,116,139,0.1)",
+                color: e.event_type === "meeting" ? theme.blue600 : e.event_type === "focus" ? theme.green500 : theme.navy500
+              }}>{e.event_type}</div>
+            </div>
+          ))}
+        </DashWidget>
+
+        {/* Priority Tasks */}
+        <DashWidget title="Priority Tasks" icon={FolderKanban} count={highTasks.length} emptyText="No high-priority tasks">
+          {data.tasks.filter(t => t.priority === "high" || t.priority === "medium").slice(0, 6).map(t => (
+            <div key={t.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${theme.navy100}` }}>
+              <div style={{
+                width:8, height:8, borderRadius:"50%",
+                background: t.priority === "high" ? "#ef4444" : "#f59e0b",
+                flexShrink:0
+              }} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:13, fontWeight:500, color:theme.navy900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{t.title}</div>
+                {t.project_name && <div style={{ fontSize:11, color:theme.navy500 }}>{t.project_name}</div>}
+              </div>
+              {t.due_at && <div style={{ fontSize:11, color:theme.navy500, fontFamily:"'JetBrains Mono', monospace" }}>
+                {new Date(t.due_at).toLocaleDateString("en-US", { month:"short", day:"numeric" })}
+              </div>}
+            </div>
+          ))}
+        </DashWidget>
+
+        {/* Unread Emails */}
+        <DashWidget title="Unread Emails" icon={Inbox} count={data.unreadThreads.length} emptyText="Inbox zero!">
+          {data.unreadThreads.slice(0, 5).map(t => (
+            <div key={t.id} style={{ padding:"8px 0", borderBottom:`1px solid ${theme.navy100}` }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:13, fontWeight:600, color:theme.navy900, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>
+                  {t.subject}
+                </div>
+                <span style={{ fontSize:11, color:theme.navy500, marginLeft:8, whiteSpace:"nowrap" }}>
+                  {t.unread_count}
+                </span>
+              </div>
+              {t.ai_summary && (
+                <div style={{ fontSize:11, color:theme.blue600, marginTop:3, display:"flex", alignItems:"center", gap:4 }}>
+                  <Sparkles size={10} /> {t.ai_summary}
+                </div>
+              )}
+            </div>
+          ))}
+        </DashWidget>
+      </div>
+    </div>
+  );
+}
+
+function DashWidget({ title, icon: Icon, count, emptyText, children }) {
   return (
     <div style={{
-      background:`linear-gradient(135deg, ${theme.navy950}, #1e3a5f, ${theme.navy900})`,
-      borderRadius:20, padding:28, color:theme.white,
-      maxWidth:1200
+      background:theme.white, border:`1px solid ${theme.navy200}`,
+      borderRadius:14, padding:20, display:"flex", flexDirection:"column"
     }}>
-      <div style={{
-        display:"inline-flex", alignItems:"center", gap:7,
-        background:"rgba(59,130,246,0.12)",
-        border:"1px solid rgba(59,130,246,0.22)",
-        padding:"5px 12px", borderRadius:20,
-        fontSize:12, fontWeight:600, color:theme.blue400, marginBottom:16
-      }}>
-        <Sparkles size={12} /> Welcome back
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+        <div style={{
+          width:34, height:34, borderRadius:9,
+          background:"rgba(59,130,246,0.08)",
+          display:"flex", alignItems:"center", justifyContent:"center"
+        }}><Icon size={16} color={theme.blue500} /></div>
+        <div style={{ flex:1, fontSize:14, fontWeight:700, color:theme.navy900 }}>{title}</div>
+        <div style={{
+          fontSize:12, fontWeight:700, color:theme.blue600,
+          background:"rgba(59,130,246,0.08)", padding:"3px 10px", borderRadius:8
+        }}>{count}</div>
       </div>
-      <h2 style={{ fontSize:26, fontWeight:800, letterSpacing:"-0.8px", margin:0 }}>
-        Your workspace is ready.
-      </h2>
-      <p style={{ color:theme.navy300, marginTop:10, fontSize:14, lineHeight:1.6 }}>
-        Connect your first email account in Settings. Once mail flows in, the assistant will
-        start building your daily briefing.
-      </p>
+      {count === 0 ? (
+        <div style={{ color:theme.navy400, fontSize:13, textAlign:"center", padding:"16px 0" }}>{emptyText}</div>
+      ) : children}
     </div>
   );
 }

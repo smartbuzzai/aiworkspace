@@ -10,7 +10,7 @@ export default async function emailsRoutes(app) {
   app.get("/threads", async (req) => {
     const { account_id, unread } = req.query || {};
     const params = [req.user.user_id];
-    let sql = `SELECT t.* FROM email_threads t WHERE t.user_id = $1`;
+    let sql = `SELECT t.* FROM email_threads t WHERE t.user_id = $1 AND t.is_archived = false`;
 
     if (account_id) {
       params.push(account_id);
@@ -112,6 +112,38 @@ export default async function emailsRoutes(app) {
     );
 
     return { ok: true, message_id: info.messageId, thread_id: threadId };
+  });
+
+  // PATCH /emails/threads/:id/star
+  app.patch("/threads/:id/star", async (req, reply) => {
+    const { rows } = await query(
+      `UPDATE email_threads SET is_starred = NOT is_starred
+        WHERE id = $1 AND user_id = $2 RETURNING id, is_starred`,
+      [req.params.id, req.user.user_id]
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+    return { ok: true, is_starred: rows[0].is_starred };
+  });
+
+  // PATCH /emails/threads/:id/archive
+  app.patch("/threads/:id/archive", async (req, reply) => {
+    const { rows } = await query(
+      `UPDATE email_threads SET is_archived = NOT is_archived
+        WHERE id = $1 AND user_id = $2 RETURNING id, is_archived`,
+      [req.params.id, req.user.user_id]
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+    return { ok: true, is_archived: rows[0].is_archived };
+  });
+
+  // DELETE /emails/threads/:id
+  app.delete("/threads/:id", async (req, reply) => {
+    const { rowCount } = await query(
+      `DELETE FROM email_threads WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user.user_id]
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
+    return { ok: true };
   });
 
   // GET /emails/accounts

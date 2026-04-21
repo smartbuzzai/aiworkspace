@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Sparkles, Reply, Archive, MoreHorizontal, Star, Mail } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Sparkles, Reply, Archive, MoreHorizontal, Star, Mail, Trash2, Send, X } from "lucide-react";
 
 const theme = {
   navy950:"#0a0f1e", navy900:"#0f172a", navy800:"#1e293b",
@@ -158,6 +158,31 @@ export default function InboxView() {
           <ThreadDetail
             thread={selected} messages={messages}
             onBack={() => setShowDetail(false)} isMobile={isMobile}
+            onStar={async (id) => {
+              const r = await fetch(`/api/emails/threads/${id}/star`, { method:"PATCH", credentials:"include" });
+              if (r.ok) {
+                const d = await r.json();
+                setSelected(s => ({ ...s, is_starred: d.is_starred }));
+                setThreads(ts => ts.map(t => t.id === id ? { ...t, is_starred: d.is_starred } : t));
+              }
+            }}
+            onArchive={async (id) => {
+              const r = await fetch(`/api/emails/threads/${id}/archive`, { method:"PATCH", credentials:"include" });
+              if (r.ok) {
+                setThreads(ts => ts.filter(t => t.id !== id));
+                setSelected(null);
+                setShowDetail(false);
+              }
+            }}
+            onDelete={async (id) => {
+              const r = await fetch(`/api/emails/threads/${id}`, { method:"DELETE", credentials:"include" });
+              if (r.ok) {
+                setThreads(ts => ts.filter(t => t.id !== id));
+                setSelected(null);
+                setShowDetail(false);
+              }
+            }}
+            onSent={() => openThread(selected)}
           />
         ) : (
           <div style={{
@@ -170,12 +195,44 @@ export default function InboxView() {
   );
 }
 
-function ThreadDetail({ thread, messages, onBack, isMobile }) {
+function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, onDelete, onSent }) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyBody, setReplyBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const textareaRef = useRef(null);
+
+  async function handleSend() {
+    if (!replyBody.trim() || sending) return;
+    setSending(true);
+    try {
+      const lastMsg = messages[messages.length - 1];
+      const r = await fetch("/api/emails/send", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: thread.account_id,
+          to: [lastMsg?.from_address || thread.participants?.[0]].filter(Boolean),
+          subject: thread.subject?.startsWith("Re:") ? thread.subject : `Re: ${thread.subject}`,
+          body_text: replyBody,
+          in_reply_to: lastMsg?.message_id || undefined,
+          thread_id: thread.id,
+        })
+      });
+      if (r.ok) {
+        setReplyBody("");
+        setReplyOpen(false);
+        if (onSent) onSent();
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <>
       <div style={{
         padding:16, borderBottom:`1px solid ${theme.navy200}`,
-        display:"flex", alignItems:"center", gap:10
+        display:"flex", alignItems:"center", gap:8
       }}>
         {isMobile && (
           <button onClick={onBack} style={{
@@ -191,9 +248,18 @@ function ThreadDetail({ thread, messages, onBack, isMobile }) {
             {thread.participants?.join(", ")}
           </div>
         </div>
-        <IconBtn><Reply size={15} /></IconBtn>
-        <IconBtn><Archive size={15} /></IconBtn>
-        <IconBtn><MoreHorizontal size={15} /></IconBtn>
+        <IconBtn title="Reply" onClick={() => { setReplyOpen(!replyOpen); setTimeout(() => textareaRef.current?.focus(), 100); }}>
+          <Reply size={15} />
+        </IconBtn>
+        <IconBtn title={thread.is_starred ? "Unstar" : "Star"} onClick={() => onStar?.(thread.id)} active={thread.is_starred}>
+          <Star size={15} fill={thread.is_starred ? "#f59e0b" : "none"} color={thread.is_starred ? "#f59e0b" : undefined} />
+        </IconBtn>
+        <IconBtn title="Archive" onClick={() => onArchive?.(thread.id)}>
+          <Archive size={15} />
+        </IconBtn>
+        <IconBtn title="Delete" onClick={() => { if (confirm("Delete this thread?")) onDelete?.(thread.id); }}>
+          <Trash2 size={15} />
+        </IconBtn>
       </div>
 
       <div style={{ flex:1, overflowY:"auto", padding:20 }}>
@@ -218,15 +284,16 @@ function ThreadDetail({ thread, messages, onBack, isMobile }) {
         {messages.map(m => (
           <div key={m.id} style={{
             marginBottom:16, padding:16,
-            background:theme.navy50, borderRadius:10,
-            border:`1px solid ${theme.navy200}`
+            background: m.is_sent ? "rgba(59,130,246,0.04)" : theme.navy50,
+            borderRadius:10,
+            border:`1px solid ${m.is_sent ? "rgba(59,130,246,0.15)" : theme.navy200}`
           }}>
             <div style={{
               display:"flex", justifyContent:"space-between", marginBottom:8,
               fontSize:12
             }}>
               <span style={{ fontWeight:600, color:theme.navy900 }}>
-                {m.from_name || m.from_address}
+                {m.is_sent ? "You" : (m.from_name || m.from_address)}
               </span>
               <span style={{ color:theme.navy500, fontFamily:"'JetBrains Mono', monospace" }}>
                 {new Date(m.received_at).toLocaleString()}
@@ -240,6 +307,53 @@ function ThreadDetail({ thread, messages, onBack, isMobile }) {
           </div>
         ))}
       </div>
+
+      {/* Reply composer */}
+      {replyOpen && (
+        <div style={{
+          borderTop:`1px solid ${theme.navy200}`, padding:16,
+          background:theme.navy50
+        }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+            <span style={{ fontSize:12, fontWeight:600, color:theme.navy700 }}>
+              Reply to {messages[messages.length - 1]?.from_name || messages[messages.length - 1]?.from_address || "sender"}
+            </span>
+            <button onClick={() => setReplyOpen(false)} style={{
+              background:"transparent", border:"none", cursor:"pointer", color:theme.navy500, padding:4
+            }}><X size={14} /></button>
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={replyBody}
+            onChange={e => setReplyBody(e.target.value)}
+            placeholder="Write your reply…"
+            rows={4}
+            style={{
+              width:"100%", resize:"vertical",
+              background:theme.white, border:`1px solid ${theme.navy200}`,
+              borderRadius:10, padding:12, fontSize:13,
+              fontFamily:"inherit", color:theme.navy900,
+              outline:"none", boxSizing:"border-box"
+            }}
+          />
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginTop:8 }}>
+            <button onClick={() => setReplyOpen(false)} style={{
+              padding:"8px 14px", borderRadius:8, fontSize:12, fontWeight:600,
+              background:"transparent", border:`1px solid ${theme.navy200}`,
+              color:theme.navy700, cursor:"pointer", fontFamily:"inherit"
+            }}>Cancel</button>
+            <button onClick={handleSend} disabled={sending || !replyBody.trim()} style={{
+              padding:"8px 16px", borderRadius:8, fontSize:12, fontWeight:600,
+              background:theme.blue600, color:theme.white, border:"none",
+              cursor:"pointer", fontFamily:"inherit",
+              display:"flex", alignItems:"center", gap:6,
+              opacity: (sending || !replyBody.trim()) ? 0.5 : 1
+            }}>
+              <Send size={12} /> {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -257,10 +371,11 @@ function FilterChip({ children, active, onClick }) {
   );
 }
 
-function IconBtn({ children }) {
+function IconBtn({ children, onClick, title, active }) {
   return (
-    <button style={{
-      background:"transparent", border:`1px solid ${theme.navy200}`,
+    <button onClick={onClick} title={title} style={{
+      background: active ? "rgba(245,158,11,0.08)" : "transparent",
+      border:`1px solid ${active ? "rgba(245,158,11,0.3)" : theme.navy200}`,
       color:theme.navy700, padding:8, borderRadius:9,
       cursor:"pointer", display:"flex"
     }}>{children}</button>
