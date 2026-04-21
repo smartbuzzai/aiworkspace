@@ -21,7 +21,7 @@ A self-hosted, AI-managed workspace: CRM, email, unified inbox, calendar, projec
 | **BullMQ workers** | IMAP sync, embeddings, reminders, digest |
 | **Uptime Kuma + Dozzle** | Monitoring + log viewer |
 
-Total monthly cost: ~€10 for the VPS, ~€1 for the domain, €0 for everything else.
+Total monthly cost: ~$10 for the VPS, ~$15 for the domain, $0 for everything else.
 
 ## Repository layout
 
