@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { query } from "../lib/db.js";
 import { buildContext, runTool, toolSchemas } from "../lib/assistant.js";
+import { checkOllama, checkWhisper, checkPiper, fetchWithTimeout } from "../lib/services.js";
 
 const OLLAMA = process.env.OLLAMA_HOST || "http://ollama:11434";
 const MODEL = process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M";
@@ -115,8 +116,35 @@ ${context}`;
     let fullReply = "";
     let toolCalls = null;
 
+    // Check if Ollama is available before streaming
+    const ollamaStatus = await checkOllama();
+    if (!ollamaStatus.ok) {
+      const msg = "I'm currently unavailable — the AI service (Ollama) is not running. Please check that the Ollama container is started.";
+      send("token", { text: msg });
+      await query(
+        `INSERT INTO ai_messages (thread_id, role, content, model, duration_ms)
+         VALUES ($1, 'assistant', $2, $3, $4)`,
+        [threadId, msg, MODEL, Date.now() - started]
+      );
+      send("done", { thread_id: threadId });
+      reply.raw.end();
+      return;
+    }
+    if (!ollamaStatus.model) {
+      const msg = `I'm not ready yet — the language model (${MODEL}) hasn't been pulled. Run: docker exec ollama ollama pull ${MODEL}`;
+      send("token", { text: msg });
+      await query(
+        `INSERT INTO ai_messages (thread_id, role, content, model, duration_ms)
+         VALUES ($1, 'assistant', $2, $3, $4)`,
+        [threadId, msg, MODEL, Date.now() - started]
+      );
+      send("done", { thread_id: threadId });
+      reply.raw.end();
+      return;
+    }
+
     try {
-      const res = await fetch(`${OLLAMA}/api/chat`, {
+      const res = await fetchWithTimeout(`${OLLAMA}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -126,7 +154,7 @@ ${context}`;
           tools: toolSchemas,
           options: { temperature: 0.4, num_ctx: 8192 }
         })
-      });
+      }, 120000); // 2 min timeout for LLM streaming
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -191,6 +219,13 @@ ${context}`;
 
   // ─── POST /assistant/voice/transcribe ──── audio → text ─────
   app.post("/voice/transcribe", async (req, reply) => {
+    const whisperStatus = await checkWhisper();
+    if (!whisperStatus.ok) {
+      return reply.code(503).send({
+        error: "Voice transcription is unavailable — the Whisper service is not running."
+      });
+    }
+
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: "No audio" });
     const buf = await data.toBuffer();
@@ -200,25 +235,44 @@ ${context}`;
     form.append("model", "Systran/faster-whisper-base.en");
     form.append("response_format", "json");
 
-    const r = await fetch(`${WHISPER}/v1/audio/transcriptions`, {
-      method: "POST", body: form
-    });
-    if (!r.ok) return reply.code(502).send({ error: "Whisper failed" });
-    const j = await r.json();
-    return { text: j.text };
+    try {
+      const r = await fetchWithTimeout(`${WHISPER}/v1/audio/transcriptions`, {
+        method: "POST", body: form
+      }, 30000);
+      if (!r.ok) return reply.code(502).send({ error: "Whisper transcription failed" });
+      const j = await r.json();
+      return { text: j.text };
+    } catch (err) {
+      req.log.error(err, "whisper request failed");
+      return reply.code(502).send({ error: "Voice transcription timed out or failed" });
+    }
   });
 
   // ─── POST /assistant/voice/speak ─── text → audio (Piper) ──
   app.post("/voice/speak", async (req, reply) => {
+    const piperStatus = await checkPiper();
+    if (!piperStatus.ok) {
+      return reply.code(503).send({
+        error: "Text-to-speech is unavailable — the Piper service is not running."
+      });
+    }
+
     const schema = z.object({ text: z.string().min(1).max(2000) });
     const { text } = schema.parse(req.body);
 
-    // Piper HTTP API (Wyoming protocol wraps it; if using Coqui or Piper-HTTP,
-    // adjust endpoint. This assumes piper-http:5000/api/tts).
-    const r = await fetch(`${PIPER}/api/tts?text=${encodeURIComponent(text)}`);
-    if (!r.ok) return reply.code(502).send({ error: "TTS failed" });
+    try {
+      const r = await fetchWithTimeout(
+        `${PIPER}/api/tts?text=${encodeURIComponent(text)}`,
+        {},
+        15000
+      );
+      if (!r.ok) return reply.code(502).send({ error: "TTS synthesis failed" });
 
-    reply.header("Content-Type", "audio/wav");
-    return reply.send(Buffer.from(await r.arrayBuffer()));
+      reply.header("Content-Type", "audio/wav");
+      return reply.send(Buffer.from(await r.arrayBuffer()));
+    } catch (err) {
+      req.log.error(err, "piper request failed");
+      return reply.code(502).send({ error: "Text-to-speech timed out or failed" });
+    }
   });
 }

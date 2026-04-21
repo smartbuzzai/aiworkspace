@@ -4,6 +4,9 @@
 //          files, assistant (chat + voice)
 // ═══════════════════════════════════════════════════════════════
 
+import { validateEnv } from "./lib/validate-env.js";
+validateEnv("api");
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
@@ -13,6 +16,8 @@ import rateLimit from "@fastify/rate-limit";
 import { db } from "./lib/db.js";
 import { redis } from "./lib/redis.js";
 import { requireAuth } from "./lib/auth.js";
+import { checkAllServices } from "./lib/services.js";
+import { runMigrations } from "./lib/migrate.js";
 
 import authRoutes from "./routes/auth.js";
 import contactsRoutes from "./routes/contacts.js";
@@ -57,7 +62,8 @@ app.get("/ready", async (req, reply) => {
   try {
     await db.query("SELECT 1");
     await redis.ping();
-    return { ok: true };
+    const services = await checkAllServices();
+    return { ok: true, services };
   } catch (err) {
     reply.code(503);
     return { ok: false, error: err.message };
@@ -87,6 +93,9 @@ app.setErrorHandler((err, req, reply) => {
     error: status === 500 ? "Internal error" : err.message
   });
 });
+
+// ─── Database migrations ──────────────────────────────────────
+await runMigrations();
 
 // ─── Start ────────────────────────────────────────────────────
 const port = Number(process.env.PORT || 4000);

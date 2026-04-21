@@ -3,17 +3,18 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { query } from "./db.js";
+import { fetchWithTimeout } from "./services.js";
 
 const OLLAMA = process.env.OLLAMA_HOST || "http://ollama:11434";
 const EMBED_MODEL = process.env.EMBED_MODEL || "nomic-embed-text";
 
 // ─── Embedding helper ─────────────────────────────────────────
 export async function embed(text) {
-  const r = await fetch(`${OLLAMA}/api/embeddings`, {
+  const r = await fetchWithTimeout(`${OLLAMA}/api/embeddings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: EMBED_MODEL, prompt: text })
-  });
+  }, 15000);
   if (!r.ok) throw new Error(`embed failed: ${r.status}`);
   const j = await r.json();
   return j.embedding;

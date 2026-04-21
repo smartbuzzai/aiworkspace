@@ -6,6 +6,9 @@
 //  - Reminder dispatcher (events + task due-dates → web push)
 // ═══════════════════════════════════════════════════════════════
 
+import { validateEnv } from "./validate-env.js";
+validateEnv();
+
 import { Worker, Queue, QueueEvents } from "bullmq";
 import Redis from "ioredis";
 import pg from "pg";
@@ -472,6 +475,26 @@ setInterval(async () => {
 }, 60 * 1000);
 
 console.log("workers online: imap-sync, embed, summarize, reminders, digest, caldav");
+
+// ─── Graceful shutdown ───────────────────────────────────────
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, async () => {
+    console.log(`${sig} received — shutting down workers gracefully`);
+    try {
+      await Promise.allSettled([
+        imapQueue.close(),
+        embedQueue.close(),
+        summarizeQueue.close(),
+        caldavQueue.close(),
+      ]);
+      await db.end();
+      connection.disconnect();
+    } catch (err) {
+      console.error("shutdown error:", err);
+    }
+    process.exit(0);
+  });
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  CALDAV SYNC — push new/updated events to Radicale; pull back
