@@ -1,0 +1,862 @@
+openapi: 3.1.0
+info:
+  title: AI Workspace API
+  version: 0.1.0
+  description: |
+    REST API for the self-hosted AI Workspace. All authenticated endpoints
+    require a `session` cookie obtained via the magic link auth flow.
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.{domain}
+    variables:
+      domain:
+        default: yourdomain.com
+
+security:
+  - sessionCookie: []
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string, nullable: true }
+        timezone: { type: string }
+
+    Contact:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        company: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        tags: { type: array, items: { type: string } }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        status: { type: string, enum: [hot, active, nurture, cold] }
+        notes: { type: string, nullable: true }
+        last_touch_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid, nullable: true }
+        project_name: { type: string, nullable: true }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        priority: { type: string, enum: [high, medium, low] }
+        status: { type: string, enum: [open, in_progress, done, cancelled] }
+        due_at: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        tags: { type: array, items: { type: string } }
+        created_at: { type: string, format: date-time }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        all_day: { type: boolean }
+        event_type: { type: string, enum: [meeting, call, focus, task, personal] }
+        attendees: { type: array, items: { type: object } }
+        created_at: { type: string, format: date-time }
+
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        stage: { type: string, enum: [backlog, discovery, in_progress, review, done] }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        color: { type: string }
+        task_count: { type: integer }
+        tasks_done: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    EmailThread:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        subject: { type: string }
+        participants: { type: array, items: { type: string } }
+        last_message_at: { type: string, format: date-time }
+        unread_count: { type: integer }
+        is_starred: { type: boolean }
+        is_archived: { type: boolean }
+        ai_summary: { type: string, nullable: true }
+        ai_priority: { type: string, nullable: true, enum: [high, medium, low] }
+
+    EmailAccount:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        email_address: { type: string }
+        imap_host: { type: string }
+        smtp_host: { type: string }
+        sync_status: { type: string, enum: [idle, syncing, error] }
+        sync_error: { type: string, nullable: true }
+        last_sync_at: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+
+    Session:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_agent: { type: string, nullable: true }
+        ip: { type: string, nullable: true }
+        last_seen_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        is_current: { type: boolean }
+
+    File:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer }
+        created_at: { type: string, format: date-time }
+
+paths:
+  # ─── Health ────────────────────────────────────────────────
+  /health:
+    get:
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: OK
+  /ready:
+    get:
+      summary: Readiness check (DB + Redis + service health)
+      security: []
+      responses:
+        "200":
+          description: All systems operational
+        "503":
+          description: Service unavailable
+
+  # ─── Auth ─────────────��───────────────────────────���────────
+  /auth/request:
+    post:
+      summary: Request magic link
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200": { description: Link sent (or logged) }
+        "429": { description: Rate limited }
+
+  /auth/verify:
+    post:
+      summary: Exchange magic link token for session
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200": { description: Session created, cookie set }
+        "400": { description: Invalid or expired token }
+
+  /auth/me:
+    get:
+      summary: Get current user
+      tags: [Auth]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+
+  /auth/sessions:
+    get:
+      summary: List active sessions
+      tags: [Auth]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+
+  /auth/sessions/{id}:
+    delete:
+      summary: Revoke a specific session
+      tags: [Auth]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Session revoked }
+
+  /auth/logout:
+    post:
+      summary: Logout (current session)
+      tags: [Auth]
+      responses:
+        "200": { description: Session cleared }
+
+  /auth/logout-all:
+    post:
+      summary: Revoke all sessions
+      tags: [Auth]
+      responses:
+        "200": { description: All sessions revoked }
+
+  # ─── Contacts ────────────────���─────────────────────────────
+  /contacts:
+    get:
+      summary: List contacts
+      tags: [Contacts]
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search by name/email/company
+        - name: status
+          in: query
+          schema: { type: string, enum: [hot, active, nurture, cold] }
+        - name: tag
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contacts:
+                    type: array
+                    items: { $ref: "#/components/schemas/Contact" }
+    post:
+      summary: Create contact
+      tags: [Contacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                email: { type: string }
+                phone: { type: string }
+                company: { type: string }
+                role: { type: string }
+                tags: { type: array, items: { type: string } }
+                score: { type: integer }
+                status: { type: string, enum: [hot, active, nurture, cold] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contact: { $ref: "#/components/schemas/Contact" }
+
+  /contacts/{id}:
+    get:
+      summary: Get contact with interaction history
+      tags: [Contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Contact + interactions }
+        "404": { description: Not found }
+    patch:
+      summary: Update contact
+      tags: [Contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Updated contact }
+    delete:
+      summary: Delete contact
+      tags: [Contacts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  # ─── Tasks ───��────────────────────────────────────────────
+  /tasks:
+    get:
+      summary: List tasks
+      tags: [Tasks]
+      parameters:
+        - name: project_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, in_progress, done, cancelled] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+    post:
+      summary: Create task
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                project_id: { type: string, format: uuid }
+                priority: { type: string, enum: [high, medium, low] }
+                status: { type: string, enum: [open, in_progress, done, cancelled] }
+                due_at: { type: string, format: date-time }
+                tags: { type: array, items: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Task" }
+
+  /tasks/{id}:
+    patch:
+      summary: Update task
+      tags: [Tasks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Updated task }
+    delete:
+      summary: Delete task
+      tags: [Tasks]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  # ─��─ Events ───────────��───────────────────────────────────
+  /events:
+    get:
+      summary: List events
+      tags: [Events]
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+    post:
+      summary: Create event
+      tags: [Events]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, starts_at, ends_at]
+              properties:
+                title: { type: string }
+                starts_at: { type: string, format: date-time }
+                ends_at: { type: string, format: date-time }
+                location: { type: string }
+                event_type: { type: string, enum: [meeting, call, focus, task, personal] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event: { $ref: "#/components/schemas/Event" }
+
+  /events/{id}:
+    patch:
+      summary: Update event
+      tags: [Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Updated event }
+    delete:
+      summary: Delete event
+      tags: [Events]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  # ─── Projects ────────────────���────────────────────────────
+  /projects:
+    get:
+      summary: List active projects with task counts
+      tags: [Projects]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: "#/components/schemas/Project" }
+    post:
+      summary: Create project
+      tags: [Projects]
+      responses:
+        "200": { description: Created project }
+
+  /projects/{id}:
+    patch:
+      summary: Update project
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Updated project }
+    delete:
+      summary: Archive project (soft delete)
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Archived }
+
+  # ─── Email Threads ────────────���───────────────────────────
+  /emails/threads:
+    get:
+      summary: List email threads (excludes archived)
+      tags: [Email]
+      parameters:
+        - name: account_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: unread
+          in: query
+          schema: { type: string, enum: ["true"] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items: { $ref: "#/components/schemas/EmailThread" }
+
+  /emails/threads/{id}:
+    get:
+      summary: Get thread with messages (marks as read)
+      tags: [Email]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Thread + messages }
+    delete:
+      summary: Delete thread
+      tags: [Email]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  /emails/threads/{id}/star:
+    patch:
+      summary: Toggle star on thread
+      tags: [Email]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Toggled }
+
+  /emails/threads/{id}/archive:
+    patch:
+      summary: Toggle archive on thread
+      tags: [Email]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Toggled }
+
+  /emails/send:
+    post:
+      summary: Send email via SMTP
+      tags: [Email]
+      description: "Rate limited: 30/min"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [account_id, to, subject]
+              properties:
+                account_id: { type: string, format: uuid }
+                to: { type: array, items: { type: string, format: email } }
+                cc: { type: array, items: { type: string, format: email } }
+                subject: { type: string }
+                body_text: { type: string }
+                body_html: { type: string }
+                in_reply_to: { type: string }
+                thread_id: { type: string, format: uuid }
+      responses:
+        "200": { description: Sent }
+
+  # ─── Email Accounts ───────────────────────────────────────
+  /accounts:
+    get:
+      summary: List email accounts (no passwords)
+      tags: [Accounts]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accounts:
+                    type: array
+                    items: { $ref: "#/components/schemas/EmailAccount" }
+    post:
+      summary: Add email account (encrypted credentials)
+      tags: [Accounts]
+      responses:
+        "200": { description: Created }
+        "409": { description: Already exists }
+
+  /accounts/presets:
+    get:
+      summary: Get provider presets (Gmail, Outlook, etc.)
+      tags: [Accounts]
+      responses:
+        "200": { description: Provider configs }
+
+  /accounts/test:
+    post:
+      summary: Test IMAP/SMTP credentials
+      tags: [Accounts]
+      responses:
+        "200": { description: Connection verified }
+        "400": { description: Connection failed }
+
+  /accounts/{id}:
+    patch:
+      summary: Update account (label, active status)
+      tags: [Accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Updated }
+    delete:
+      summary: Remove email account
+      tags: [Accounts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  # ─── Files ────────────────────────────────────────────────
+  /files:
+    get:
+      summary: List files
+      tags: [Files]
+      parameters:
+        - name: folder_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Search by name or extracted text
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items: { $ref: "#/components/schemas/File" }
+    post:
+      summary: Upload file (multipart)
+      tags: [Files]
+      description: "Rate limited: 30/min. Max 100 MB."
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                folder_id: { type: string, format: uuid }
+      responses:
+        "200": { description: Uploaded }
+
+  /files/{id}/download:
+    get:
+      summary: Get presigned download URL (15 min expiry)
+      tags: [Files]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Presigned URL }
+
+  /files/{id}:
+    delete:
+      summary: Delete file
+      tags: [Files]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Deleted }
+
+  # ─── AI Assistant ──────────��──────────────────────────────
+  /assistant/threads:
+    get:
+      summary: List chat threads
+      tags: [Assistant]
+      responses:
+        "200": { description: Chat thread list }
+
+  /assistant/threads/{id}:
+    get:
+      summary: Get chat thread with messages
+      tags: [Assistant]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Thread + messages }
+
+  /assistant/chat:
+    post:
+      summary: Send message to AI (SSE stream response)
+      tags: [Assistant]
+      description: "Rate limited: 20/min. Returns Server-Sent Events."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                thread_id: { type: string, format: uuid }
+                message: { type: string, maxLength: 8000 }
+      responses:
+        "200":
+          description: SSE stream with events (thread, token, tool_call, tool_result, done, error)
+          content:
+            text/event-stream: {}
+
+  /assistant/voice/transcribe:
+    post:
+      summary: Transcribe audio to text (Whisper)
+      tags: [Assistant]
+      description: "Rate limited: 15/min"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string }
+        "503": { description: Whisper unavailable }
+
+  /assistant/voice/speak:
+    post:
+      summary: Text to speech (Piper)
+      tags: [Assistant]
+      description: "Rate limited: 15/min"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: WAV audio
+          content:
+            audio/wav: {}
+        "503": { description: Piper unavailable }
+
+  # ─── Push Notifications ───────────────────────────────────
+  /push/vapid:
+    get:
+      summary: Get VAPID public key
+      tags: [Push]
+      responses:
+        "200": { description: Public key }
+        "503": { description: Push not configured }
+
+  /push/subscribe:
+    post:
+      summary: Register push subscription
+      tags: [Push]
+      responses:
+        "200": { description: Subscribed }
+
+  /push/unsubscribe:
+    post:
+      summary: Remove push subscription
+      tags: [Push]
+      responses:
+        "200": { description: Unsubscribed }
+
+  /push/notifications:
+    get:
+      summary: List in-app notifications
+      tags: [Push]
+      responses:
+        "200": { description: Notification list }
+
+  /push/notifications/{id}/read:
+    post:
+      summary: Mark notification as read
+      tags: [Push]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Marked read }
