@@ -33,15 +33,7 @@ import Settings from "./Settings";
 import InboxView from "./InboxView";
 import CRMView from "./CRMView";
 import CalendarView from "./CalendarView";
-
-const theme = {
-  navy950:"#0a0f1e", navy900:"#0f172a", navy800:"#1e293b",
-  navy700:"#334155", navy500:"#64748b", navy400:"#94a3b8",
-  navy300:"#cbd5e1", navy200:"#e2e8f0", navy100:"#f1f5f9", navy50:"#f8fafc",
-  blue600:"#2563eb", blue500:"#3b82f6", blue400:"#60a5fa",
-  green500:"#10b981", green400:"#34d399", teal500:"#14b8a6",
-  white:"#ffffff"
-};
+import { theme } from "../lib/theme";
 
 export default function App({ user, onLogout }) {
   const [view, setView] = useState("dashboard");
@@ -396,7 +388,7 @@ function Dashboard({ user }) {
         </DashWidget>
 
         {/* Priority Tasks */}
-        <DashWidget title="Priority Tasks" icon={FolderKanban} count={highTasks.length} emptyText="No high-priority tasks">
+        <DashWidget title="Priority Tasks" icon={FolderKanban} count={data.tasks.filter(t => t.priority === "high" || t.priority === "medium").length} emptyText="No priority tasks">
           {data.tasks.filter(t => t.priority === "high" || t.priority === "medium").slice(0, 6).map(t => (
             <div key={t.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 0", borderBottom:`1px solid ${theme.navy100}` }}>
               <div style={{

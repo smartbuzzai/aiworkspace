@@ -34,23 +34,22 @@ export async function checkOllama() {
   const now = Date.now();
   if (now - status.ollama.checkedAt < CHECK_INTERVAL_MS) return status.ollama;
 
-  const ok = await probe(`${OLLAMA}/api/version`);
-  let model = false;
-  if (ok) {
-    try {
-      const r = await fetch(`${OLLAMA}/api/tags`, {
-        signal: AbortSignal.timeout(5000)
-      });
-      if (r.ok) {
-        const data = await r.json();
-        const modelName = process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M";
-        const baseModel = modelName.split(":")[0];
-        model = (data.models || []).some(m =>
-          m.name === modelName || m.name.startsWith(baseModel)
-        );
-      }
-    } catch { /* ignore */ }
-  }
+  // Single request: /api/tags confirms reachability AND lists models
+  let ok = false, model = false;
+  try {
+    const r = await fetch(`${OLLAMA}/api/tags`, {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (r.ok) {
+      ok = true;
+      const data = await r.json();
+      const modelName = process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M";
+      const baseModel = modelName.split(":")[0];
+      model = (data.models || []).some(m =>
+        m.name === modelName || m.name.startsWith(baseModel)
+      );
+    }
+  } catch { /* unreachable */ }
 
   status.ollama = { ok, model, checkedAt: now };
   return status.ollama;

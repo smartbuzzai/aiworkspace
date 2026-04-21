@@ -1,8 +1,3 @@
-// ═══════════════════════════════════════════════════════════════
-//  Environment validation — fail fast with clear error messages
-//  Import at the very top of server.js / worker index.js
-// ═══════════════════════════════════════════════════════════════
-
 const REQUIRED_COMMON = [
   "DATABASE_URL",
   "REDIS_URL",
@@ -46,7 +41,6 @@ export function validateEnv(role = "api") {
     process.exit(1);
   }
 
-  // Non-fatal warnings
   for (const { key, msg } of WARNINGS) {
     if (!process.env[key]) {
       console.warn(`⚠  ${msg}`);

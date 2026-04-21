@@ -262,25 +262,29 @@ setInterval(async () => {
   }
 }, 2 * 60 * 1000);
 
+// ─── Shared fetch helper with timeout ────────────────────────
+async function fetchTimeout(url, options = {}, ms = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  EMBEDDINGS WORKER
 // ═══════════════════════════════════════════════════════════════
 
 async function embed(text) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
-  try {
-    const r = await fetch(`${OLLAMA}/api/embeddings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
-      signal: controller.signal
-    });
-    if (!r.ok) throw new Error(`embed failed: ${r.status}`);
-    return (await r.json()).embedding;
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await fetchTimeout(`${OLLAMA}/api/embeddings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: EMBED_MODEL, prompt: text })
+  }, 30000);
+  if (!r.ok) throw new Error(`embed failed: ${r.status}`);
+  return (await r.json()).embedding;
 }
 
 new Worker("embed", async (job) => {
@@ -317,26 +321,19 @@ new Worker("embed", async (job) => {
 const summarizeQueue = new Queue("summarize", { connection });
 
 async function llmComplete(prompt, maxTokens = 120) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60000);
-  try {
-    const r = await fetch(`${OLLAMA}/api/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M",
-        prompt,
-        stream: false,
-        options: { temperature: 0.2, num_predict: maxTokens }
-      }),
-      signal: controller.signal
-    });
-    if (!r.ok) throw new Error(`llm failed: ${r.status}`);
-    const j = await r.json();
-    return (j.response || "").trim();
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await fetchTimeout(`${OLLAMA}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M",
+      prompt,
+      stream: false,
+      options: { temperature: 0.2, num_predict: maxTokens }
+    })
+  }, 60000);
+  if (!r.ok) throw new Error(`llm failed: ${r.status}`);
+  const j = await r.json();
+  return (j.response || "").trim();
 }
 
 new Worker("summarize", async (job) => {
@@ -413,14 +410,19 @@ async function sendPush(userId, payload) {
   }
 }
 
+// Track notified events to prevent duplicate reminders across polling intervals
+const notifiedEvents = new Set();
+
 setInterval(async () => {
   try {
-    // Events starting in next 15 min
     const { rows: events } = await db.query(
       `SELECT id, user_id, title, starts_at FROM events
         WHERE starts_at BETWEEN now() AND now() + interval '15 minutes'`
     );
     for (const e of events) {
+      if (notifiedEvents.has(e.id)) continue;
+      notifiedEvents.add(e.id);
+
       await sendPush(e.user_id, {
         title: "Upcoming: " + e.title,
         body: `Starts at ${new Date(e.starts_at).toLocaleTimeString()}`,
@@ -434,6 +436,9 @@ setInterval(async () => {
          `/calendar?event=${e.id}`]
       );
     }
+
+    // Prune old entries to prevent unbounded growth
+    if (notifiedEvents.size > 500) notifiedEvents.clear();
   } catch (err) {
     console.error("reminder loop error:", err);
   }

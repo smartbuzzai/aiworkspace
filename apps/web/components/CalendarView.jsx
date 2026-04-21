@@ -1,15 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Clock, MapPin } from "lucide-react";
-
-const theme = {
-  navy950:"#0a0f1e", navy900:"#0f172a", navy800:"#1e293b",
-  navy700:"#334155", navy500:"#64748b", navy400:"#94a3b8",
-  navy300:"#cbd5e1", navy200:"#e2e8f0", navy100:"#f1f5f9", navy50:"#f8fafc",
-  blue600:"#2563eb", blue500:"#3b82f6", blue400:"#60a5fa",
-  green500:"#10b981", green400:"#34d399", teal500:"#14b8a6",
-  white:"#ffffff"
-};
+import { theme } from "../lib/theme";
 
 const TYPE_COLORS = {
   meeting:  { bg:"rgba(59,130,246,0.12)", text:"#2563eb", border:"rgba(59,130,246,0.3)" },
@@ -55,7 +47,6 @@ export default function CalendarView() {
     if (viewMode === "month") {
       from = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
       to = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59);
-      // Extend to cover visible days from prev/next month
       from.setDate(from.getDate() - from.getDay());
       to.setDate(to.getDate() + (6 - to.getDay()));
     } else {

@@ -119,9 +119,7 @@ ${context}`;
     let toolCalls = null;
 
     // Check if Ollama is available before streaming
-    const ollamaStatus = await checkOllama();
-    if (!ollamaStatus.ok) {
-      const msg = "I'm currently unavailable — the AI service (Ollama) is not running. Please check that the Ollama container is started.";
+    async function earlyReply(msg) {
       send("token", { text: msg });
       await query(
         `INSERT INTO ai_messages (thread_id, role, content, model, duration_ms)
@@ -130,18 +128,15 @@ ${context}`;
       );
       send("done", { thread_id: threadId });
       reply.raw.end();
+    }
+
+    const ollamaStatus = await checkOllama();
+    if (!ollamaStatus.ok) {
+      await earlyReply("I'm currently unavailable — the AI service (Ollama) is not running. Please check that the Ollama container is started.");
       return;
     }
     if (!ollamaStatus.model) {
-      const msg = `I'm not ready yet — the language model (${MODEL}) hasn't been pulled. Run: docker exec ollama ollama pull ${MODEL}`;
-      send("token", { text: msg });
-      await query(
-        `INSERT INTO ai_messages (thread_id, role, content, model, duration_ms)
-         VALUES ($1, 'assistant', $2, $3, $4)`,
-        [threadId, msg, MODEL, Date.now() - started]
-      );
-      send("done", { thread_id: threadId });
-      reply.raw.end();
+      await earlyReply(`I'm not ready yet — the language model (${MODEL}) hasn't been pulled. Run: docker exec ollama ollama pull ${MODEL}`);
       return;
     }
 
