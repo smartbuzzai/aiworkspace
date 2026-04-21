@@ -18,6 +18,7 @@ import { redis } from "./lib/redis.js";
 import { requireAuth } from "./lib/auth.js";
 import { checkAllServices } from "./lib/services.js";
 import { runMigrations } from "./lib/migrate.js";
+import { auditHook } from "./lib/audit.js";
 
 import authRoutes from "./routes/auth.js";
 import contactsRoutes from "./routes/contacts.js";
@@ -72,6 +73,9 @@ app.get("/ready", async (req, reply) => {
 
 // ─── Auth decorator ───────────────────────────────────────────
 app.decorate("requireAuth", requireAuth);
+
+// ─── Audit logging ───────────────────────────────────────────
+auditHook(app);
 
 // ─── Routes ───────────────────────────────────────────────────
 await app.register(authRoutes, { prefix: "/auth" });

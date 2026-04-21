@@ -128,10 +128,47 @@ export default async function authRoutes(app) {
     return { ok: true, user };
   });
 
-  // POST /auth/logout
+  // POST /auth/logout — revoke current session
   app.post("/logout", { preHandler: app.requireAuth }, async (req, reply) => {
     await query(`DELETE FROM sessions WHERE id = $1`, [req.user.session_id]);
     reply.clearCookie("session", { path: "/" });
+    return { ok: true };
+  });
+
+  // POST /auth/logout-all — revoke all sessions for this user
+  app.post("/logout-all", { preHandler: app.requireAuth }, async (req, reply) => {
+    const { rowCount } = await query(
+      `DELETE FROM sessions WHERE user_id = $1`,
+      [req.user.user_id]
+    );
+    reply.clearCookie("session", { path: "/" });
+    return { ok: true, revoked: rowCount };
+  });
+
+  // GET /auth/sessions — list active sessions
+  app.get("/sessions", { preHandler: app.requireAuth }, async (req) => {
+    const { rows } = await query(
+      `SELECT id, user_agent, ip::text, last_seen_at, created_at, expires_at
+         FROM sessions
+        WHERE user_id = $1 AND expires_at > now()
+        ORDER BY last_seen_at DESC`,
+      [req.user.user_id]
+    );
+    return {
+      sessions: rows.map(s => ({
+        ...s,
+        is_current: s.id === req.user.session_id
+      }))
+    };
+  });
+
+  // DELETE /auth/sessions/:id — revoke a specific session
+  app.delete("/sessions/:id", { preHandler: app.requireAuth }, async (req, reply) => {
+    const { rowCount } = await query(
+      `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user.user_id]
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: "Session not found" });
     return { ok: true };
   });
 

@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import {
   Mail, Plus, Trash2, CheckCircle2, AlertCircle, Bell, BellOff,
-  ChevronRight, X, Eye, EyeOff, RefreshCw
+  ChevronRight, X, Eye, EyeOff, RefreshCw, Monitor, Smartphone, Globe, LogOut
 } from "lucide-react";
 
 const theme = {
@@ -25,6 +25,7 @@ export default function Settings({ user }) {
     <div style={{ display:"flex", flexDirection:"column", gap:16, maxWidth:720 }}>
       <AccountSection user={user} />
       <EmailAccountsSection />
+      <SessionsSection />
       <PushSection />
     </div>
   );
@@ -326,6 +327,115 @@ function AddAccountModal({ onClose, onSaved }) {
 
       <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+  );
+}
+
+// ─── Active sessions ─────────────────────────────────────────
+function SessionsSection() {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const r = await fetch("/api/auth/sessions", { credentials:"include" });
+      const d = await r.json();
+      setSessions(d.sessions || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { refresh(); }, []);
+
+  async function revoke(id) {
+    await fetch(`/api/auth/sessions/${id}`, { method:"DELETE", credentials:"include" });
+    refresh();
+  }
+
+  async function revokeAll() {
+    if (!confirm("Sign out of all devices? You will need to sign in again.")) return;
+    await fetch("/api/auth/logout-all", { method:"POST", credentials:"include" });
+    window.location.reload();
+  }
+
+  function deviceIcon(ua) {
+    if (!ua) return Globe;
+    const l = ua.toLowerCase();
+    if (l.includes("mobile") || l.includes("android") || l.includes("iphone")) return Smartphone;
+    return Monitor;
+  }
+
+  function deviceLabel(ua) {
+    if (!ua) return "Unknown device";
+    if (ua.length > 60) return ua.slice(0, 57) + "…";
+    return ua;
+  }
+
+  return (
+    <Card title="Active sessions" action={
+      sessions.length > 1 && (
+        <button onClick={revokeAll} style={{
+          ...btnSecondary(),
+          color: theme.red500, borderColor: "rgba(239,68,68,0.3)"
+        }}>
+          <LogOut size={12} /> Sign out all
+        </button>
+      )
+    }>
+      {loading ? (
+        <div style={{ color:theme.navy500, fontSize:13 }}>Loading…</div>
+      ) : sessions.length === 0 ? (
+        <div style={{ color:theme.navy500, fontSize:13 }}>No active sessions.</div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {sessions.map(s => {
+            const Icon = deviceIcon(s.user_agent);
+            return (
+              <div key={s.id} style={{
+                display:"flex", alignItems:"center", gap:12,
+                padding:14, border:`1px solid ${s.is_current ? "rgba(59,130,246,0.3)" : theme.navy200}`,
+                borderRadius:10, background: s.is_current ? "rgba(59,130,246,0.04)" : theme.navy50
+              }}>
+                <div style={{
+                  width:36, height:36, borderRadius:9,
+                  background: s.is_current ? "rgba(59,130,246,0.1)" : "rgba(100,116,139,0.06)",
+                  display:"flex", alignItems:"center", justifyContent:"center"
+                }}>
+                  <Icon size={16} color={s.is_current ? theme.blue500 : theme.navy500} />
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:theme.navy900, display:"flex", alignItems:"center", gap:6 }}>
+                    {s.ip || "Unknown IP"}
+                    {s.is_current && (
+                      <span style={{
+                        fontSize:10, fontWeight:700, color:theme.blue600,
+                        background:"rgba(59,130,246,0.1)", padding:"2px 7px", borderRadius:4
+                      }}>CURRENT</span>
+                    )}
+                  </div>
+                  <div style={{
+                    fontSize:11, color:theme.navy500, marginTop:2,
+                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"
+                  }}>
+                    {deviceLabel(s.user_agent)}
+                  </div>
+                  <div style={{ fontSize:11, color:theme.navy400, marginTop:2, fontFamily:"'JetBrains Mono', monospace" }}>
+                    Last active {new Date(s.last_seen_at).toLocaleString()}
+                  </div>
+                </div>
+                {!s.is_current && (
+                  <button onClick={() => revoke(s.id)} title="Revoke this session" style={{
+                    background:"transparent", border:"none", padding:8,
+                    color:theme.navy500, cursor:"pointer"
+                  }}><Trash2 size={15} /></button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 

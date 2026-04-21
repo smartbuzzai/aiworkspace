@@ -55,7 +55,9 @@ export default async function filesRoutes(app) {
   });
 
   // POST /files — multipart upload
-  app.post("/", async (req, reply) => {
+  app.post("/", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } }
+  }, async (req, reply) => {
     const data = await req.file();
     if (!data) return reply.code(400).send({ error: "No file" });
 

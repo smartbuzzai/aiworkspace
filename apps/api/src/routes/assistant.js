@@ -41,7 +41,9 @@ export default async function assistantRoutes(app) {
   });
 
   // ─── POST /assistant/chat ─── streams tokens via SSE ────────
-  app.post("/chat", async (req, reply) => {
+  app.post("/chat", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
+  }, async (req, reply) => {
     const schema = z.object({
       thread_id: z.string().uuid().optional(),
       message: z.string().min(1).max(8000)
@@ -218,7 +220,9 @@ ${context}`;
   });
 
   // ─── POST /assistant/voice/transcribe ──── audio → text ─────
-  app.post("/voice/transcribe", async (req, reply) => {
+  app.post("/voice/transcribe", {
+    config: { rateLimit: { max: 15, timeWindow: "1 minute" } }
+  }, async (req, reply) => {
     const whisperStatus = await checkWhisper();
     if (!whisperStatus.ok) {
       return reply.code(503).send({
@@ -249,7 +253,9 @@ ${context}`;
   });
 
   // ─── POST /assistant/voice/speak ─── text → audio (Piper) ──
-  app.post("/voice/speak", async (req, reply) => {
+  app.post("/voice/speak", {
+    config: { rateLimit: { max: 15, timeWindow: "1 minute" } }
+  }, async (req, reply) => {
     const piperStatus = await checkPiper();
     if (!piperStatus.ok) {
       return reply.code(503).send({

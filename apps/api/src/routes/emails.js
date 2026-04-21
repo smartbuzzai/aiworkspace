@@ -50,7 +50,9 @@ export default async function emailsRoutes(app) {
   });
 
   // POST /emails/send
-  app.post("/send", async (req, reply) => {
+  app.post("/send", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } }
+  }, async (req, reply) => {
     const schema = z.object({
       account_id: z.string().uuid(),
       to: z.array(z.string().email()).min(1),

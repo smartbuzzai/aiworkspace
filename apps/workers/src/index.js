@@ -238,7 +238,10 @@ new Worker("imap-sync", async (job) => {
   } finally {
     await client.logout().catch(() => {});
   }
-}, { connection, concurrency: 3 });
+}, {
+  connection, concurrency: 3,
+  settings: { backoffStrategy: (attemptsMade) => Math.min(attemptsMade * 5000, 60000) }
+});
 
 // ─── Repeat: poll every 2 min for each active account ────────
 setInterval(async () => {
@@ -249,7 +252,9 @@ setInterval(async () => {
     for (const r of rows) {
       await imapQueue.add("sync", { account_id: r.id }, {
         removeOnComplete: 100,
-        removeOnFail: 50
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: { type: "custom" }
       });
     }
   } catch (err) {
@@ -262,13 +267,20 @@ setInterval(async () => {
 // ═══════════════════════════════════════════════════════════════
 
 async function embed(text) {
-  const r = await fetch(`${OLLAMA}/api/embeddings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: EMBED_MODEL, prompt: text })
-  });
-  if (!r.ok) throw new Error("embed failed");
-  return (await r.json()).embedding;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const r = await fetch(`${OLLAMA}/api/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: EMBED_MODEL, prompt: text }),
+      signal: controller.signal
+    });
+    if (!r.ok) throw new Error(`embed failed: ${r.status}`);
+    return (await r.json()).embedding;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 new Worker("embed", async (job) => {
@@ -289,9 +301,14 @@ new Worker("embed", async (job) => {
   // Also queue AI summary for this thread (fire-and-forget)
   summarizeQueue.add("summary", { user_id, thread_id, subject, text }, {
     removeOnComplete: 50,
-    removeOnFail: 20
+    removeOnFail: 20,
+    attempts: 3,
+    backoff: { type: "custom" }
   }).catch(() => {});
-}, { connection, concurrency: 2 });
+}, {
+  connection, concurrency: 2,
+  settings: { backoffStrategy: (attemptsMade) => Math.min(attemptsMade * 10000, 120000) }
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  AI SUMMARY WORKER — generates ai_summary + ai_priority per thread
@@ -300,19 +317,26 @@ new Worker("embed", async (job) => {
 const summarizeQueue = new Queue("summarize", { connection });
 
 async function llmComplete(prompt, maxTokens = 120) {
-  const r = await fetch(`${OLLAMA}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M",
-      prompt,
-      stream: false,
-      options: { temperature: 0.2, num_predict: maxTokens }
-    })
-  });
-  if (!r.ok) throw new Error(`llm failed: ${r.status}`);
-  const j = await r.json();
-  return (j.response || "").trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60000);
+  try {
+    const r = await fetch(`${OLLAMA}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.OLLAMA_MODEL || "llama3.1:8b-instruct-q4_K_M",
+        prompt,
+        stream: false,
+        options: { temperature: 0.2, num_predict: maxTokens }
+      }),
+      signal: controller.signal
+    });
+    if (!r.ok) throw new Error(`llm failed: ${r.status}`);
+    const j = await r.json();
+    return (j.response || "").trim();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 new Worker("summarize", async (job) => {
@@ -353,7 +377,10 @@ Priority:`,
   } catch (err) {
     console.warn("summarize skipped:", err.message);
   }
-}, { connection, concurrency: 1 }); // Sequential to keep LLM pressure low
+}, {
+  connection, concurrency: 1,
+  settings: { backoffStrategy: (attemptsMade) => Math.min(attemptsMade * 15000, 120000) }
+}); // Sequential to keep LLM pressure low
 
 // ═══════════════════════════════════════════════════════════════
 //  REMINDERS — sends web push for upcoming events & overdue tasks
