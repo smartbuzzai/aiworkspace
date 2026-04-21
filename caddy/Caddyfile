@@ -1,0 +1,83 @@
+# ═══════════════════════════════════════════════════════════════
+#  Caddyfile — auto HTTPS via Let's Encrypt
+#  Replace {$DOMAIN} with your real domain in DNS A records
+# ═══════════════════════════════════════════════════════════════
+
+# ─── Global options ────────────────────────────────────────────
+{
+	email admin@{$DOMAIN}
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+# ─── Web app ───────────────────────────────────────────────────
+app.{$DOMAIN} {
+	encode zstd gzip
+
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	reverse_proxy web:3000
+}
+
+# ─── API ───────────────────────────────────────────────────────
+api.{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		Access-Control-Allow-Origin "https://app.{$DOMAIN}"
+		Access-Control-Allow-Credentials "true"
+		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+		-Server
+	}
+
+	@options method OPTIONS
+	respond @options 204
+
+	# WebSocket + SSE support built in
+	reverse_proxy api:4000 {
+		flush_interval -1
+	}
+}
+
+# ─── n8n (automation dashboard) ────────────────────────────────
+n8n.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy n8n:5678
+}
+
+# ─── MinIO console (file admin) ────────────────────────────────
+files.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy minio:9001
+}
+
+# ─── CalDAV ────────────────────────────────────────────────────
+dav.{$DOMAIN} {
+	reverse_proxy radicale:5232
+}
+
+# ─── Monitoring ────────────────────────────────────────────────
+status.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy uptime:3001
+}
+
+logs.{$DOMAIN} {
+	encode zstd gzip
+	basic_auth {
+		# Generate hash with: docker exec caddy caddy hash-password
+		admin $2a$14$REPLACE_WITH_GENERATED_HASH
+	}
+	reverse_proxy dozzle:8080
+}

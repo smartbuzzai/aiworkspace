@@ -1,0 +1,276 @@
+# ═══════════════════════════════════════════════════════════════
+#  AI Workspace — Self-Hosted Stack
+#  Contabo VPS · Docker Compose · Zero paid SaaS
+# ═══════════════════════════════════════════════════════════════
+#
+# Usage:
+#   cp .env.example .env   # fill in secrets
+#   docker compose up -d
+#   docker exec ollama ollama pull llama3.1:8b-instruct-q4_K_M
+#
+# All service data persists under /data on the host.
+# ═══════════════════════════════════════════════════════════════
+
+name: workspace
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+services:
+
+  # ─── Reverse proxy + auto TLS ─────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [edge]
+    depends_on: [web, api, n8n]
+
+  # ─── Database ─────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${PG_DB}
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ─── Cache + queue ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --appendonly yes --loglevel warning --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - /data/redis:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+
+  # ─── Object storage (S3-compatible) ───────────────────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - /data/minio:/data
+    networks: [internal, edge]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+
+  # ─── Search ───────────────────────────────────────────────────
+  meili:
+    image: getmeili/meilisearch:v1.10
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_KEY}
+      MEILI_ENV: production
+    volumes:
+      - /data/meili:/meili_data
+    networks: [internal]
+
+  # ─── Local LLM ────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_NUM_PARALLEL: "2"
+    volumes:
+      - /data/ollama:/root/.ollama
+    networks: [internal]
+    # Uncomment below if the VPS has an NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ─── Speech-to-text ───────────────────────────────────────────
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    restart: unless-stopped
+    environment:
+      WHISPER__MODEL: Systran/faster-whisper-base.en
+      WHISPER__INFERENCE_DEVICE: cpu
+      WHISPER__COMPUTE_TYPE: int8
+    volumes:
+      - /data/whisper:/root/.cache/huggingface
+    networks: [internal]
+
+  # ─── Text-to-speech ───────────────────────────────────────────
+  piper:
+    image: lscr.io/linuxserver/piper:latest
+    restart: unless-stopped
+    environment:
+      PIPER_VOICE: en_US-lessac-medium
+      PIPER_LENGTH: "1.0"
+    volumes:
+      - /data/piper:/config
+    networks: [internal]
+
+  # ─── CalDAV / CardDAV ─────────────────────────────────────────
+  radicale:
+    image: tomsquest/docker-radicale:latest
+    restart: unless-stopped
+    volumes:
+      - /data/radicale:/data
+      - ./radicale/config:/config/config:ro
+    networks: [internal]
+
+  # ─── Workflow automation ──────────────────────────────────────
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${PG_USER}
+      DB_POSTGRESDB_PASSWORD: ${PG_PASSWORD}
+      N8N_HOST: n8n.${DOMAIN}
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://n8n.${DOMAIN}/
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: ${TZ}
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: ${N8N_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_PASSWORD}
+    volumes:
+      - /data/n8n:/home/node/.n8n
+    networks: [internal, edge]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── API ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: postgres://${PG_USER}:${PG_PASSWORD}@postgres:5432/${PG_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_BUCKET: workspace
+      MEILI_HOST: http://meili:7700
+      MEILI_KEY: ${MEILI_KEY}
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3.1:8b-instruct-q4_K_M
+      WHISPER_HOST: http://whisper:8000
+      PIPER_HOST: http://piper:10200
+      CALDAV_HOST: http://radicale:5232
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      APP_URL: https://app.${DOMAIN}
+      API_URL: https://api.${DOMAIN}
+      # Optional fallback for snappy voice replies (free tier)
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    volumes:
+      - /data/api-uploads:/tmp/uploads
+    networks: [internal, edge]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Web (Next.js) ────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+        NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
+        NEXT_PUBLIC_VAPID_KEY: ${VAPID_PUBLIC_KEY:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+      NEXT_PUBLIC_VAPID_KEY: ${VAPID_PUBLIC_KEY:-}
+    networks: [edge]
+    depends_on: [api]
+
+  # ─── Background workers ───────────────────────────────────────
+  workers:
+    build:
+      context: ./apps/workers
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${PG_USER}:${PG_PASSWORD}@postgres:5432/${PG_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_USER}
+      S3_SECRET_KEY: ${MINIO_PASSWORD}
+      S3_BUCKET: workspace
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: llama3.1:8b-instruct-q4_K_M
+      MEILI_HOST: http://meili:7700
+      MEILI_KEY: ${MEILI_KEY}
+      CALDAV_HOST: http://radicale:5232
+      JWT_SECRET: ${JWT_SECRET}
+      DOMAIN: ${DOMAIN}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Monitoring ───────────────────────────────────────────────
+  uptime:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - /data/uptime:/app/data
+    networks: [edge]
+
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DOZZLE_AUTH_PROVIDER: simple
+    networks: [edge]

@@ -1,0 +1,22 @@
+{
+  "name": "workspace-workers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.12.0",
+    "ical.js": "^2.1.0",
+    "imapflow": "^1.0.164",
+    "ioredis": "^5.4.1",
+    "mailparser": "^3.7.1",
+    "meilisearch": "^0.41.0",
+    "minio": "^8.0.1",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.12.0",
+    "uuid": "^10.0.0",
+    "web-push": "^3.6.7"
+  }
+}
