@@ -14,7 +14,7 @@ interface Contact {
   phone?: string;
   company?: string;
   role?: string;
-  status: string;
+  status: "hot" | "active" | "nurture" | "cold";
   score: number;
   notes?: string;
   last_touch_at?: string;

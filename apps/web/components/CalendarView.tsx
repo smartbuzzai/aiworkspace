@@ -35,7 +35,7 @@ interface EventModalProps {
 interface EventDetailProps {
   event: CalendarEvent;
   onClose: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
 }
 
 interface NavBtnProps {

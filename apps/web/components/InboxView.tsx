@@ -16,7 +16,7 @@ interface Thread {
   ai_summary: string | null;
   last_message_at: string;
   account_id: string;
-  ai_priority: number | null;
+  ai_priority: string | null;
 }
 
 interface EmailMessage {

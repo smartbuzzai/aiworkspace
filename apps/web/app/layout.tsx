@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-// @ts-expect-error CSS module import
 import "./globals.css";
 
 export const metadata: Metadata = {
