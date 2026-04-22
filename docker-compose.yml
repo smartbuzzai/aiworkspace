@@ -136,15 +136,18 @@ services:
       - /data/whisper:/root/.cache/huggingface
     networks: [internal]
 
-  # ─── Text-to-speech ───────────────────────────────────────────
+  # ─── Text-to-speech (HTTP API wrapping piper-tts) ──────────────
   piper:
-    image: lscr.io/linuxserver/piper:latest
+    build:
+      context: ./apps/piper-http
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
       PIPER_VOICE: en_US-lessac-medium
-      PIPER_LENGTH: "1.0"
+      PIPER_MODEL_DIR: /data
+      PORT: "5000"
     volumes:
-      - /data/piper:/config
+      - /data/piper:/data
     networks: [internal]
 
   # ─── CalDAV / CardDAV ─────────────────────────────────────────
@@ -201,7 +204,7 @@ services:
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: llama3.1:8b-instruct-q4_K_M
       WHISPER_HOST: http://whisper:8000
-      PIPER_HOST: http://piper:10200
+      PIPER_HOST: http://piper:5000
       CALDAV_HOST: http://radicale:5232
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}

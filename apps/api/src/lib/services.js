@@ -66,7 +66,7 @@ export async function checkWhisper() {
 export async function checkPiper() {
   const now = Date.now();
   if (now - status.piper.checkedAt < CHECK_INTERVAL_MS) return status.piper;
-  const ok = await probe(`${PIPER}/api/tts?text=test`, 3000);
+  const ok = await probe(`${PIPER}/health`, 3000);
   status.piper = { ok, checkedAt: now };
   return status.piper;
 }
