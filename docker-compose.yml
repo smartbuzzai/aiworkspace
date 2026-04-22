@@ -33,6 +33,14 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+    environment:
+      APP_HOST: ${APP_HOST}
+      API_HOST: ${API_HOST}
+      N8N_HOST: ${N8N_HOST}
+      FILES_HOST: ${FILES_HOST}
+      DAV_HOST: ${DAV_HOST}
+      STATUS_HOST: ${STATUS_HOST}
+      LOGS_HOST: ${LOGS_HOST}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -158,9 +166,9 @@ services:
       DB_POSTGRESDB_DATABASE: n8n
       DB_POSTGRESDB_USER: ${PG_USER}
       DB_POSTGRESDB_PASSWORD: ${PG_PASSWORD}
-      N8N_HOST: n8n.${DOMAIN}
+      N8N_HOST: ${N8N_HOST}
       N8N_PROTOCOL: https
-      WEBHOOK_URL: https://n8n.${DOMAIN}/
+      WEBHOOK_URL: https://${N8N_HOST}/
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       GENERIC_TIMEZONE: ${TZ}
       N8N_BASIC_AUTH_ACTIVE: "true"
@@ -197,8 +205,8 @@ services:
       CALDAV_HOST: http://radicale:5232
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      APP_URL: https://app.${DOMAIN}
-      API_URL: https://api.${DOMAIN}
+      APP_URL: https://${APP_HOST}
+      API_URL: https://${API_HOST}
       # Optional fallback for snappy voice replies (free tier)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
     volumes:
@@ -216,14 +224,15 @@ services:
       context: ./apps/web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
-        NEXT_PUBLIC_APP_URL: https://app.${DOMAIN}
+        NEXT_PUBLIC_API_URL: https://${API_HOST}
+        NEXT_PUBLIC_APP_URL: https://${APP_HOST}
         NEXT_PUBLIC_VAPID_KEY: ${VAPID_PUBLIC_KEY:-}
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
     environment:
-      NODE_ENV: production
       PORT: "3000"
-      NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+      NEXT_PUBLIC_API_URL: https://${API_HOST}
       NEXT_PUBLIC_VAPID_KEY: ${VAPID_PUBLIC_KEY:-}
     networks: [edge]
     depends_on: [api]

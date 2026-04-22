@@ -1,21 +1,19 @@
 # ═══════════════════════════════════════════════════════════════
 #  Caddyfile — auto HTTPS via Let's Encrypt
-#  Replace {$DOMAIN} with your real domain in DNS A records
+#  Subdomain scheme: ruby.smartbuzzai.com (Option A)
 # ═══════════════════════════════════════════════════════════════
 
-# ─── Global options ────────────────────────────────────────────
 {
-	email admin@{$DOMAIN}
+	email admin@smartbuzzai.com
 	servers {
 		protocols h1 h2 h3
 	}
 }
 
 # ─── Web app ───────────────────────────────────────────────────
-app.{$DOMAIN} {
+{$APP_HOST} {
 	encode zstd gzip
 
-	# Security headers
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
@@ -29,12 +27,12 @@ app.{$DOMAIN} {
 }
 
 # ─── API ───────────────────────────────────────────────────────
-api.{$DOMAIN} {
+{$API_HOST} {
 	encode zstd gzip
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		Access-Control-Allow-Origin "https://app.{$DOMAIN}"
+		Access-Control-Allow-Origin "https://{$APP_HOST}"
 		Access-Control-Allow-Credentials "true"
 		Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 		Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
@@ -44,36 +42,35 @@ api.{$DOMAIN} {
 	@options method OPTIONS
 	respond @options 204
 
-	# WebSocket + SSE support built in
 	reverse_proxy api:4000 {
 		flush_interval -1
 	}
 }
 
 # ─── n8n (automation dashboard) ────────────────────────────────
-n8n.{$DOMAIN} {
+{$N8N_HOST} {
 	encode zstd gzip
 	reverse_proxy n8n:5678
 }
 
 # ─── MinIO console (file admin) ────────────────────────────────
-files.{$DOMAIN} {
+{$FILES_HOST} {
 	encode zstd gzip
 	reverse_proxy minio:9001
 }
 
 # ─── CalDAV ────────────────────────────────────────────────────
-dav.{$DOMAIN} {
+{$DAV_HOST} {
 	reverse_proxy radicale:5232
 }
 
 # ─── Monitoring ────────────────────────────────────────────────
-status.{$DOMAIN} {
+{$STATUS_HOST} {
 	encode zstd gzip
 	reverse_proxy uptime:3001
 }
 
-logs.{$DOMAIN} {
+{$LOGS_HOST} {
 	encode zstd gzip
 	basic_auth {
 		# Generate hash with: docker exec caddy caddy hash-password
