@@ -53,21 +53,35 @@ export default async function authRoutes(app) {
     req.log.info({ email, link }, "magic link issued");
 
     if (process.env.SMTP_HOST) {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: process.env.SMTP_SECURE === "true",
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM,
-        to: email,
-        subject: "Your sign-in link",
-        text: `Click to sign in: ${link}\n\nExpires in ${LINK_MINUTES} minutes.`
-      });
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT || 587),
+          secure: process.env.SMTP_SECURE === "true",
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 15000,
+        });
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM,
+          to: email,
+          subject: "Sign in to Workspace",
+          text: `Click to sign in:\n\n${link}\n\nThis link expires in ${LINK_MINUTES} minutes.\nIf you didn't request this, ignore this email.`,
+          html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">Sign in to Workspace</h2>
+            <p>Click the button below to sign in:</p>
+            <a href="${link}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0">Sign in</a>
+            <p style="color:#64748b;font-size:13px;margin-top:24px">This link expires in ${LINK_MINUTES} minutes.<br>If you didn't request this, ignore this email.</p>
+          </div>`
+        });
+        req.log.info({ email }, "magic link emailed");
+      } catch (err) {
+        req.log.error({ err, email }, "magic link email failed — link still in logs above");
+      }
     }
 
     return { ok: true, message: "If that email exists, a link was sent." };

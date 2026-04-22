@@ -209,6 +209,12 @@ services:
       API_URL: https://${API_HOST}
       # Optional fallback for snappy voice replies (free tier)
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     volumes:
       - /data/api-uploads:/tmp/uploads
     networks: [internal, edge]
