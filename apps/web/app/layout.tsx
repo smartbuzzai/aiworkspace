@@ -1,24 +1,27 @@
-export const metadata = {
+import type { Metadata, Viewport } from "next";
+// @ts-expect-error CSS module import
+import "./globals.css";
+
+export const metadata: Metadata = {
   title: "Workspace",
   description: "Your AI-managed workspace",
   manifest: "/manifest.json",
-  themeColor: "#0a0f1e",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Workspace"
-  }
+    title: "Workspace",
+  },
 };
 
-export const viewport = {
+export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#0a0f1e"
+  themeColor: "#0a0f1e",
 };
 
-export default function RootLayout({ children }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
@@ -29,15 +32,7 @@ export default function RootLayout({ children }) {
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body style={{
-        margin: 0,
-        fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-        background: "#f8fafc",
-        color: "#1e293b",
-        WebkitFontSmoothing: "antialiased"
-      }}>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
