@@ -8,7 +8,7 @@ export default async function emailsRoutes(app) {
 
   // GET /emails/threads
   app.get("/threads", async (req) => {
-    const { account_id, unread } = req.query || {};
+    const { account_id, unread, q } = req.query || {};
     const params = [req.user.user_id];
     let sql = `SELECT t.* FROM email_threads t WHERE t.user_id = $1 AND t.is_archived = false`;
 
@@ -17,6 +17,12 @@ export default async function emailsRoutes(app) {
       sql += ` AND t.account_id = $${params.length}`;
     }
     if (unread === "true") sql += ` AND t.unread_count > 0`;
+    if (q) {
+      params.push(`%${q}%`);
+      sql += ` AND (t.subject ILIKE $${params.length} OR t.participants::text ILIKE $${params.length} OR EXISTS (
+        SELECT 1 FROM emails e WHERE e.thread_id = t.id AND e.body_text ILIKE $${params.length}
+      ))`;
+    }
 
     sql += ` ORDER BY t.last_message_at DESC NULLS LAST LIMIT 100`;
     const { rows } = await query(sql, params);

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useRef, type ReactNode } from "react";
-import { Sparkles, Reply, Archive, Star, Mail, Trash2, Send, X } from "lucide-react";
+import { Sparkles, Reply, Archive, Star, Mail, Trash2, Send, X, Search, Plus, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
 
 /* ------------------------------------------------------------------ */
@@ -32,6 +32,13 @@ interface EmailMessage {
 interface EmailAccount {
   id: string;
   label: string;
+  email_address: string;
+}
+
+interface ComposeModalProps {
+  accounts: EmailAccount[];
+  onClose: () => void;
+  onSent: () => void;
 }
 
 interface ThreadDetailProps {
@@ -66,11 +73,13 @@ export default function InboxView() {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [filter, setFilter] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const [selected, setSelected] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [showDetail, setShowDetail] = useState<boolean>(false);
+  const [showCompose, setShowCompose] = useState<boolean>(false);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 900);
@@ -80,6 +89,12 @@ export default function InboxView() {
   }, []);
 
   useEffect(() => { loadThreads(); loadAccounts(); }, [filter]);
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(loadThreads, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   async function loadAccounts() {
     try {
@@ -91,7 +106,10 @@ export default function InboxView() {
 
   async function loadThreads() {
     setLoading(true);
-    const qs = filter === "all" ? "" : `?account_id=${filter}`;
+    const params = new URLSearchParams();
+    if (filter !== "all") params.set("account_id", filter);
+    if (searchQuery.trim()) params.set("q", searchQuery.trim());
+    const qs = params.toString() ? `?${params}` : "";
     try {
       const r = await fetch(`/api/emails/threads${qs}`, { credentials: "include" });
       const d = await r.json();
@@ -132,10 +150,38 @@ export default function InboxView() {
           isMobile && showDetail && "hidden",
         )}
       >
+        {/* Search + Compose bar */}
+        <div className="p-2.5 border-b border-navy-200 flex gap-2 items-center">
+          <div className="flex items-center gap-2 flex-1 bg-navy-50 border border-navy-200 rounded-lg px-2.5 py-[6px]">
+            <Search size={14} className="text-navy-400 shrink-0" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search emails…"
+              className="bg-transparent border-none outline-none text-[13px] w-full text-navy-800"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="bg-transparent border-none p-0 cursor-pointer text-navy-400"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => setShowCompose(true)}
+            title="Compose"
+            className="bg-blue-600 text-white border-none p-[7px] rounded-lg cursor-pointer flex items-center justify-center shrink-0"
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
+
         {accounts.length > 1 && (
-          <div className="p-3 border-b border-navy-200 flex gap-1.5 overflow-x-auto">
+          <div className="px-2.5 py-2 border-b border-navy-200 flex gap-1.5 overflow-x-auto">
             <FilterChip active={filter === "all"} onClick={() => setFilter("all")}>
-              All accounts · {threads.length}
+              All · {threads.length}
             </FilterChip>
             {accounts.map((a) => (
               <FilterChip key={a.id} active={filter === a.id} onClick={() => setFilter(a.id)}>
@@ -150,7 +196,9 @@ export default function InboxView() {
             <div className="p-6 text-navy-500 text-[13px]">Loading…</div>
           ) : threads.length === 0 ? (
             <div className="p-6 text-navy-500 text-[13px] text-center">
-              No messages yet.<br />First IMAP sync may take a minute.
+              {searchQuery
+                ? `No results for "${searchQuery}"`
+                : <>No messages yet.<br />First IMAP sync may take a minute.</>}
             </div>
           ) : (
             threads.map((t) => (
@@ -249,6 +297,14 @@ export default function InboxView() {
           </div>
         )}
       </div>
+
+      {showCompose && (
+        <ComposeModal
+          accounts={accounts}
+          onClose={() => setShowCompose(false)}
+          onSent={() => { setShowCompose(false); loadThreads(); }}
+        />
+      )}
     </div>
   );
 }
@@ -455,6 +511,156 @@ function IconBtn({ children, onClick, title, active }: IconBtnProps) {
     >
       {children}
     </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Compose modal                                                      */
+/* ------------------------------------------------------------------ */
+
+function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
+  const [accountId, setAccountId] = useState<string>(accounts[0]?.id || "");
+  const [to, setTo] = useState<string>("");
+  const [cc, setCc] = useState<string>("");
+  const [subject, setSubject] = useState<string>("");
+  const [body, setBody] = useState<string>("");
+  const [sending, setSending] = useState<boolean>(false);
+  const [showCc, setShowCc] = useState<boolean>(false);
+
+  async function handleSend() {
+    if (!to.trim() || !subject.trim() || sending) return;
+    setSending(true);
+    try {
+      const toList = to.split(",").map(e => e.trim()).filter(Boolean);
+      const ccList = cc.split(",").map(e => e.trim()).filter(Boolean);
+      const r = await fetch("/api/emails/send", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          account_id: accountId,
+          to: toList,
+          cc: ccList.length ? ccList : undefined,
+          subject,
+          body_text: body,
+        }),
+      });
+      if (r.ok) onSent();
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-[560px] max-h-[90vh] overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.2)] flex flex-col"
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-navy-200 flex items-center gap-3">
+          <Pencil size={16} className="text-blue-500" />
+          <h3 className="m-0 text-base font-bold text-navy-900 flex-1">New Email</h3>
+          <button
+            onClick={onClose}
+            className="bg-transparent border-none text-navy-500 cursor-pointer p-1"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-5 flex flex-col gap-3">
+          {accounts.length > 1 && (
+            <div>
+              <label className="block text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-1">From</label>
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                className="w-full px-3 py-2 text-[13px] border border-navy-200 rounded-lg outline-none text-navy-900 bg-white"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label} ({a.email_address})</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-1">To</label>
+            <input
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="recipient@example.com"
+              className="w-full px-3 py-2 text-[13px] border border-navy-200 rounded-lg outline-none text-navy-900 bg-white box-border"
+            />
+          </div>
+
+          {showCc ? (
+            <div>
+              <label className="block text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-1">CC</label>
+              <input
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+                placeholder="cc@example.com"
+                className="w-full px-3 py-2 text-[13px] border border-navy-200 rounded-lg outline-none text-navy-900 bg-white box-border"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowCc(true)}
+              className="text-[11px] text-blue-600 font-semibold bg-transparent border-none cursor-pointer p-0 self-start"
+            >
+              + Add CC
+            </button>
+          )}
+
+          <div>
+            <label className="block text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-1">Subject</label>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject"
+              className="w-full px-3 py-2 text-[13px] border border-navy-200 rounded-lg outline-none text-navy-900 bg-white box-border"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-1">Message</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write your message…"
+              rows={8}
+              className="w-full px-3 py-2 text-[13px] border border-navy-200 rounded-lg outline-none text-navy-900 bg-white resize-y box-border"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-navy-200 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-xs font-semibold bg-transparent border border-navy-200 text-navy-700 cursor-pointer"
+          >
+            Discard
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || !to.trim() || !subject.trim()}
+            className={cn(
+              "px-5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer flex items-center gap-1.5",
+              (sending || !to.trim() || !subject.trim()) && "opacity-50",
+            )}
+          >
+            <Send size={12} /> {sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
