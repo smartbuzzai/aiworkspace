@@ -878,6 +878,8 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
   // New share form
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
@@ -939,6 +941,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   }
 
   async function removeMember(userId: string) {
+    if (!confirm("Remove this member from the project?")) return;
     await fetch(`/api/projects/${project.id}/members/${userId}`, {
       method: "DELETE", credentials: "include",
     });
@@ -982,6 +985,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   }
 
   async function revokeShare(shareId: string) {
+    if (!confirm("Revoke this client's portal access? Their link will stop working immediately.")) return;
     await fetch(`/api/projects/${project.id}/shares/${shareId}`, {
       method: "DELETE", credentials: "include",
     });
@@ -991,7 +995,8 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   async function copyLink(token: string) {
     const url = `${window.location.origin}/portal/${token}`;
     await navigator.clipboard.writeText(url);
-    toast("success", "Portal link copied!");
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
   }
 
   async function publishUpdate(updateId: string) {
@@ -1192,10 +1197,13 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
                       <>
                         <button
                           onClick={() => copyLink(share.token)}
-                          className="bg-transparent border-none cursor-pointer p-1.5 text-navy-400 hover:text-blue-500 rounded-lg"
-                          title="Copy portal link"
+                          className={cn(
+                            "bg-transparent border-none cursor-pointer p-1.5 rounded-lg transition-colors",
+                            copiedToken === share.token ? "text-green-500" : "text-navy-400 hover:text-blue-500"
+                          )}
+                          title={copiedToken === share.token ? "Copied!" : "Copy portal link"}
                         >
-                          <Copy size={13} />
+                          {copiedToken === share.token ? <Check size={13} /> : <Copy size={13} />}
                         </button>
                         <button
                           onClick={() => revokeShare(share.id)}

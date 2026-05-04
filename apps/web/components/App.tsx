@@ -638,7 +638,7 @@ function AssistantPanel({ open, onCollapse, chat }: { open: boolean; onCollapse:
         <button
           onClick={chat.toggleListen}
           className={cn(
-            "w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all",
+            "w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all shrink-0",
             chat.listening
               ? "bg-gradient-to-br from-blue-500 to-green-500 text-white border-none"
               : "bg-navy-50 border border-navy-200 text-navy-600"
@@ -646,6 +646,17 @@ function AssistantPanel({ open, onCollapse, chat }: { open: boolean; onCollapse:
           title="Voice input"
         >
           <Mic size={14} />
+        </button>
+        <button
+          onClick={() => chat.send(chat.input)}
+          disabled={chat.streaming || !chat.input.trim()}
+          className={cn(
+            "w-8 h-8 rounded-lg bg-blue-600 border-none text-white cursor-pointer flex items-center justify-center shrink-0 transition-opacity",
+            (chat.streaming || !chat.input.trim()) && "opacity-40"
+          )}
+          title="Send"
+        >
+          <Send size={13} />
         </button>
       </div>
     </aside>

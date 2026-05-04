@@ -593,6 +593,7 @@ function InvitesSection() {
   }
 
   async function revoke(id: string) {
+    if (!confirm("Revoke this invite code? Anyone who hasn't used it yet won't be able to.")) return;
     await fetch(`/api/invites/${id}`, { method: "DELETE", credentials: "include" });
     refresh();
   }
