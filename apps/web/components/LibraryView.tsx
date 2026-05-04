@@ -250,6 +250,7 @@ export default function LibraryView() {
   }
 
   async function deleteFolder(folderId: string) {
+    if (!confirm("Delete this folder? Files inside will be moved to the root.")) return;
     await fetch(`/api/files/folders/${folderId}`, { method: "DELETE", credentials: "include" });
     load();
   }

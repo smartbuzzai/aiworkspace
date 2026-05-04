@@ -227,7 +227,7 @@ export default function App({ user, onLogout }: AppProps) {
         </header>
 
         <main className={cn("flex-1", isMobile ? "p-4" : "p-8")}>
-          {view === "dashboard" && <Dashboard user={user} />}
+          {view === "dashboard" && <Dashboard user={user} setView={setView} />}
           {view === "inbox" && <InboxView />}
           {view === "crm" && <CRMView />}
           {view === "calendar" && <CalendarView />}
@@ -268,7 +268,7 @@ interface DashboardData {
   unreadThreads: any[];
 }
 
-function Dashboard({ user }: { user: User }) {
+function Dashboard({ user, setView }: { user: User; setView: (v: string) => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
 
   useEffect(() => {
@@ -327,7 +327,7 @@ function Dashboard({ user }: { user: User }) {
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-4">
-        <DashWidget title="Today's Schedule" icon={Calendar} count={data.events.length} emptyText="No events today">
+        <DashWidget title="Today's Schedule" icon={Calendar} count={data.events.length} emptyText="No events today — add one in Calendar" onMore={data.events.length > 5 ? () => setView("calendar") : undefined}>
           {data.events.slice(0, 5).map((e: any) => (
             <div key={e.id} className="flex items-center gap-2.5 py-2 border-b border-navy-100">
               <div className="w-[42px] text-center text-xs font-bold text-blue-600 font-mono">
@@ -342,7 +342,7 @@ function Dashboard({ user }: { user: User }) {
           ))}
         </DashWidget>
 
-        <DashWidget title="Priority Tasks" icon={FolderKanban} count={priorityTasks.length} emptyText="No priority tasks">
+        <DashWidget title="Priority Tasks" icon={FolderKanban} count={priorityTasks.length} emptyText="All caught up — add tasks in Tasks" onMore={priorityTasks.length > 6 ? () => setView("tasks") : undefined}>
           {priorityTasks.slice(0, 6).map((t: any) => (
             <div key={t.id} className="flex items-center gap-2.5 py-2 border-b border-navy-100">
               <div className={cn(
@@ -362,7 +362,7 @@ function Dashboard({ user }: { user: User }) {
           ))}
         </DashWidget>
 
-        <DashWidget title="Unread Emails" icon={Inbox} count={data.unreadThreads.length} emptyText="Inbox zero!">
+        <DashWidget title="Unread Emails" icon={Inbox} count={data.unreadThreads.length} emptyText="Inbox zero — connect an account in Settings" onMore={data.unreadThreads.length > 5 ? () => setView("inbox") : undefined}>
           {data.unreadThreads.slice(0, 5).map((t: any) => (
             <div key={t.id} className="py-2 border-b border-navy-100">
               <div className="flex justify-between items-center">
@@ -387,10 +387,11 @@ interface DashWidgetProps {
   icon: LucideIcon;
   count: number;
   emptyText: string;
+  onMore?: () => void;
   children?: React.ReactNode;
 }
 
-function DashWidget({ title, icon: Icon, count, emptyText, children }: DashWidgetProps) {
+function DashWidget({ title, icon: Icon, count, emptyText, onMore, children }: DashWidgetProps) {
   return (
     <div className="bg-white border border-navy-200 rounded-[14px] p-5 flex flex-col">
       <div className="flex items-center gap-2.5 mb-3.5">
@@ -404,7 +405,19 @@ function DashWidget({ title, icon: Icon, count, emptyText, children }: DashWidge
       </div>
       {count === 0 ? (
         <div className="text-navy-400 text-[13px] text-center py-4">{emptyText}</div>
-      ) : children}
+      ) : (
+        <>
+          {children}
+          {onMore && (
+            <button
+              onClick={onMore}
+              className="mt-2.5 text-[12px] font-semibold text-blue-600 bg-transparent border-none cursor-pointer p-0 self-start hover:underline"
+            >
+              +{count - (title === "Priority Tasks" ? 6 : 5)} more →
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

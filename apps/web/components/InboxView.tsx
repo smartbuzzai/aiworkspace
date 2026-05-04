@@ -72,6 +72,7 @@ interface IconBtnProps {
 /* ------------------------------------------------------------------ */
 
 export default function InboxView() {
+  const { toast } = useToast();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [filter, setFilter] = useState<string>("all");
@@ -287,6 +288,7 @@ export default function InboxView() {
                 setThreads((ts) => ts.filter((t) => t.id !== id));
                 setSelected(null);
                 setShowDetail(false);
+                toast("success", "Thread archived.");
               }
             }}
             onDelete={async (id: string) => {
@@ -295,6 +297,7 @@ export default function InboxView() {
                 setThreads((ts) => ts.filter((t) => t.id !== id));
                 setSelected(null);
                 setShowDetail(false);
+                toast("success", "Thread deleted.");
               }
             }}
             onSent={() => openThread(selected)}
@@ -559,6 +562,11 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
   const [showCc, setShowCc] = useState<boolean>(false);
   const { toast } = useToast();
 
+  function handleDiscard() {
+    if ((to.trim() || subject.trim() || body.trim()) && !confirm("Discard this draft?")) return;
+    onClose();
+  }
+
   async function handleSend() {
     if (!to.trim() || !subject.trim() || sending) return;
     setSending(true);
@@ -592,7 +600,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4"
-      onClick={onClose}
+      onClick={handleDiscard}
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -603,7 +611,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
           <Pencil size={16} className="text-blue-500" />
           <h3 className="m-0 text-base font-bold text-navy-900 flex-1">New Email</h3>
           <button
-            onClick={onClose}
+            onClick={handleDiscard}
             className="bg-transparent border-none text-navy-500 cursor-pointer p-1"
           >
             <X size={16} />
@@ -681,7 +689,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
         {/* Footer */}
         <div className="px-5 py-4 border-t border-navy-200 flex justify-end gap-2">
           <button
-            onClick={onClose}
+            onClick={handleDiscard}
             className="px-4 py-2 rounded-lg text-xs font-semibold bg-transparent border border-navy-200 text-navy-700 cursor-pointer"
           >
             Discard
