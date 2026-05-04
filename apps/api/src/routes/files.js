@@ -1,6 +1,11 @@
 import crypto from "node:crypto";
 import * as Minio from "minio";
+import { z } from "zod";
+import { Queue } from "bullmq";
 import { query } from "../lib/db.js";
+import { redis } from "../lib/redis.js";
+
+const extractQueue = new Queue("extract", { connection: redis });
 
 const endpoint = new URL(process.env.S3_ENDPOINT);
 const mc = new Minio.Client({
@@ -45,6 +50,7 @@ export default async function filesRoutes(app) {
             LEFT JOIN folders fo ON fo.id = f.folder_id
                 WHERE f.user_id = $1`;
     if (folder_id) { params.push(folder_id); sql += ` AND f.folder_id = $${params.length}`; }
+    else if (!q) { sql += ` AND f.folder_id IS NULL`; }
     if (q) {
       params.push(`%${q}%`);
       sql += ` AND (f.name ILIKE $${params.length} OR f.extracted_text ILIKE $${params.length})`;
@@ -64,7 +70,8 @@ export default async function filesRoutes(app) {
     const folder_id = data.fields?.folder_id?.value || null;
     const buf = await data.toBuffer();
     const checksum = crypto.createHash("sha256").update(buf).digest("hex");
-    const s3_key = `${req.user.user_id}/${Date.now()}-${data.filename}`;
+    const safeName = data.filename.replace(/[/\\]/g, "_").replace(/\.\./g, "_");
+    const s3_key = `${req.user.user_id}/${Date.now()}-${safeName}`;
     const kind = detectKind(data.mimetype, data.filename);
 
     await mc.putObject(BUCKET, s3_key, buf, buf.length, {
@@ -79,18 +86,12 @@ export default async function filesRoutes(app) {
        kind, data.mimetype, buf.length, s3_key, BUCKET, checksum]
     );
 
-    // Queue text extraction job for searchable content (workers process)
     if (["pdf", "doc"].includes(kind)) {
       try {
-        const { Queue } = await import("bullmq");
-        const { default: Redis } = await import("ioredis");
-        const r = new Redis(process.env.REDIS_URL);
-        const q = new Queue("extract", { connection: r });
-        await q.add("extract", {
+        await extractQueue.add("extract", {
           file_id: rows[0].id, user_id: req.user.user_id,
           s3_key, kind, mime: data.mimetype
         }, { removeOnComplete: 50, removeOnFail: 20 });
-        r.disconnect();
       } catch (err) {
         req.log.warn("could not queue extraction: " + err.message);
       }
@@ -99,19 +100,29 @@ export default async function filesRoutes(app) {
     return { file: rows[0] };
   });
 
-  // GET /files/:id/download — presigned URL (15 min)
+  // GET /files/:id/download — stream file from S3 through the API
+  // ?inline=1 for in-browser preview, otherwise attachment download
   app.get("/:id/download", async (req, reply) => {
     const { rows } = await query(
-      `SELECT s3_key, s3_bucket, name FROM files
-        WHERE id = $1 AND user_id = $2`,
+      `SELECT f.s3_key, f.s3_bucket, f.name, f.mime_type, f.size_bytes FROM files f
+        WHERE f.id = $1
+          AND (f.user_id = $2
+            OR f.project_id IN (SELECT id FROM projects WHERE user_id = $2)
+            OR f.project_id IN (SELECT project_id FROM project_members WHERE user_id = $2))`,
       [req.params.id, req.user.user_id]
     );
     if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
 
-    const url = await mc.presignedGetObject(
-      rows[0].s3_bucket, rows[0].s3_key, 15 * 60
-    );
-    return { url, filename: rows[0].name };
+    const { s3_bucket, s3_key, name, mime_type, size_bytes } = rows[0];
+    const inline = req.query.inline === "1";
+    const disposition = inline ? `inline; filename="${encodeURIComponent(name)}"` : `attachment; filename="${encodeURIComponent(name)}"`;
+
+    const stream = await mc.getObject(s3_bucket, s3_key);
+    reply.header("Content-Type", mime_type || "application/octet-stream");
+    reply.header("Content-Disposition", disposition);
+    if (size_bytes) reply.header("Content-Length", size_bytes);
+    reply.header("Cache-Control", "private, max-age=3600");
+    return reply.send(stream);
   });
 
   app.delete("/:id", async (req, reply) => {
@@ -120,8 +131,135 @@ export default async function filesRoutes(app) {
         RETURNING s3_key, s3_bucket`,
       [req.params.id, req.user.user_id]
     );
-    if (rows.length > 0) {
-      mc.removeObject(rows[0].s3_bucket, rows[0].s3_key).catch(() => {});
+    if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+
+    try {
+      await mc.removeObject(rows[0].s3_bucket, rows[0].s3_key);
+    } catch (err) {
+      req.log.error({ err, s3_key: rows[0].s3_key }, "S3 delete failed — DB record removed but object may remain");
+      return { ok: true, warning: "File record deleted but storage cleanup failed." };
+    }
+    return { ok: true };
+  });
+
+  // PATCH /files/:id — update file metadata (client_visible)
+  app.patch("/:id", async (req, reply) => {
+    const schema = z.object({
+      client_visible: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues });
+
+    const sets = [];
+    const params = [req.params.id, req.user.user_id];
+    if (parsed.data.client_visible !== undefined) {
+      params.push(parsed.data.client_visible);
+      sets.push(`client_visible = $${params.length}`);
+    }
+    if (sets.length === 0) return { ok: true };
+
+    const { rowCount } = await query(
+      `UPDATE files SET ${sets.join(", ")} WHERE id = $1 AND user_id = $2`,
+      params
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
+    return { ok: true };
+  });
+
+  // ── Folder management ──────────────────────────────────────────────
+
+  // GET /folders — list folders for the user
+  app.get("/folders", async (req) => {
+    const { parent_id, all } = req.query || {};
+    const params = [req.user.user_id];
+    let sql = `SELECT * FROM folders WHERE user_id = $1`;
+    if (all === "true") {
+      // no parent filter — return all folders
+    } else if (parent_id) {
+      params.push(parent_id);
+      sql += ` AND parent_id = $${params.length}`;
+    } else {
+      sql += ` AND parent_id IS NULL`;
+    }
+    sql += ` ORDER BY name ASC`;
+    const { rows } = await query(sql, params);
+    return { folders: rows };
+  });
+
+  // POST /folders — create a folder
+  app.post("/folders", async (req, reply) => {
+    const schema = z.object({
+      name: z.string().min(1).max(255),
+      parent_id: z.string().uuid().nullable().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues });
+    }
+    const { name, parent_id } = parsed.data;
+
+    let path;
+    if (parent_id) {
+      const { rows: parentRows } = await query(
+        `SELECT path FROM folders WHERE id = $1 AND user_id = $2`,
+        [parent_id, req.user.user_id]
+      );
+      if (parentRows.length === 0) {
+        return reply.code(404).send({ error: "Parent folder not found" });
+      }
+      path = parentRows[0].path + "/" + name;
+    } else {
+      path = "/" + name;
+    }
+
+    const { rows } = await query(
+      `INSERT INTO folders (user_id, parent_id, name, path)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.user.user_id, parent_id || null, name, path]
+    );
+    return { folder: rows[0] };
+  });
+
+  // PATCH /files/:id/move — move a file to a folder (or root)
+  app.patch("/:id/move", async (req, reply) => {
+    const schema = z.object({
+      folder_id: z.string().uuid().nullable(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues });
+    }
+    const { folder_id } = parsed.data;
+
+    // If moving to a folder, verify the folder belongs to the user
+    if (folder_id) {
+      const { rows: folderRows } = await query(
+        `SELECT id FROM folders WHERE id = $1 AND user_id = $2`,
+        [folder_id, req.user.user_id]
+      );
+      if (folderRows.length === 0) {
+        return reply.code(404).send({ error: "Folder not found" });
+      }
+    }
+
+    const { rowCount } = await query(
+      `UPDATE files SET folder_id = $1 WHERE id = $2 AND user_id = $3`,
+      [folder_id, req.params.id, req.user.user_id]
+    );
+    if (rowCount === 0) {
+      return reply.code(404).send({ error: "File not found" });
+    }
+    return { ok: true };
+  });
+
+  // DELETE /folders/:folderId — delete a folder
+  app.delete("/folders/:folderId", async (req, reply) => {
+    const { rows } = await query(
+      `DELETE FROM folders WHERE id = $1 AND user_id = $2 RETURNING id`,
+      [req.params.folderId, req.user.user_id]
+    );
+    if (rows.length === 0) {
+      return reply.code(404).send({ error: "Folder not found" });
     }
     return { ok: true };
   });
