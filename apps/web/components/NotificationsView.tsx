@@ -89,7 +89,18 @@ export default function NotificationsView() {
 
       {/* List */}
       {loading ? (
-        <div className="text-navy-500 text-[13px] p-6">Loading&hellip;</div>
+        <div className="flex flex-col gap-1.5">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white border border-navy-200 rounded-xl px-4 py-3 flex gap-3 items-start animate-pulse">
+              <div className="w-2 h-2 rounded-full mt-1.5 bg-navy-200 shrink-0" />
+              <div className="flex-1 space-y-2 py-0.5">
+                <div className="h-3.5 bg-navy-100 rounded w-1/3" />
+                <div className="h-3 bg-navy-100 rounded w-full" />
+                <div className="h-2.5 bg-navy-100 rounded w-2/5" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : notifications.length === 0 ? (
         <div className="bg-white border border-navy-200 rounded-xl p-10 text-center text-navy-500 text-sm">
           No notifications yet.

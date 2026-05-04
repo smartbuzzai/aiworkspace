@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Sparkles, Reply, Archive, Star, Mail, Trash2, Send, X, Search, Plus, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useToast } from "./shared/Toast";
@@ -330,7 +330,6 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
   const [replyOpen, setReplyOpen] = useState<boolean>(false);
   const [replyBody, setReplyBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   async function handleSend() {
@@ -383,10 +382,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
         </div>
         <IconBtn
           title="Reply"
-          onClick={() => {
-            setReplyOpen(!replyOpen);
-            setTimeout(() => textareaRef.current?.focus(), 100);
-          }}
+          onClick={() => setReplyOpen(!replyOpen)}
         >
           <Reply size={15} />
         </IconBtn>
@@ -452,7 +448,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
                 {m.is_sent ? "You" : (m.from_name || m.from_address)}
               </span>
               <span className="text-navy-500 font-mono">
-                {new Date(m.received_at).toLocaleString()}
+                {relTime(m.received_at)}
               </span>
             </div>
             <div className="text-[13px] text-navy-700 leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-auto">
@@ -482,7 +478,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
             </button>
           </div>
           <textarea
-            ref={textareaRef}
+            autoFocus
             value={replyBody}
             onChange={(e) => setReplyBody(e.target.value)}
             placeholder="Write your reply…"
@@ -499,6 +495,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
             <button
               onClick={handleSend}
               disabled={sending || !replyBody.trim()}
+              title={!replyBody.trim() ? "Message required" : undefined}
               className={cn(
                 "px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer font-[inherit] flex items-center gap-1.5",
                 (sending || !replyBody.trim()) && "opacity-50",
@@ -699,6 +696,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
           <button
             onClick={handleSend}
             disabled={sending || !to.trim() || !subject.trim()}
+            title={!to.trim() ? "Recipient required" : !subject.trim() ? "Subject required" : undefined}
             className={cn(
               "px-5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer flex items-center gap-1.5",
               (sending || !to.trim() || !subject.trim()) && "opacity-50",

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { relTime, formatDue } from "../lib/date";
 import { useToast } from "./shared/Toast";
 import type { User } from "../lib/types";
 
@@ -233,7 +234,7 @@ function EmailAccountsSection() {
                       </button>
                     </>
                   ) : a.last_sync_at
-                    ? `Last sync ${new Date(a.last_sync_at).toLocaleTimeString()}`
+                    ? `Last sync ${relTime(a.last_sync_at)}`
                     : "Waiting for first sync"}
                 </div>
               </div>
@@ -506,16 +507,14 @@ function AddAccountModal({ onClose, onSaved }: AddAccountModalProps) {
           )}
 
           <div className="flex gap-2 mt-1">
-            <button onClick={test} disabled={testing || saving || !canSave} className={cn(
-              btnSecondary, "flex-1 justify-center",
-              (testing || saving || !canSave) && "opacity-60"
-            )}>
+            <button onClick={test} disabled={testing || saving || !canSave}
+              title={!canSave ? "Fill in label and email address first" : undefined}
+              className={cn(btnSecondary, "flex-1 justify-center", (testing || saving || !canSave) && "opacity-60")}>
               {testing ? <RefreshCw size={13} className="animate-spin" /> : "Test connection"}
             </button>
-            <button onClick={save} disabled={saving || testing || !canSave} className={cn(
-              btnPrimary, "flex-1 justify-center",
-              (saving || testing || !canSave) && "opacity-60"
-            )}>
+            <button onClick={save} disabled={saving || testing || !canSave}
+              title={!canSave ? "Fill in label and email address first" : undefined}
+              className={cn(btnPrimary, "flex-1 justify-center", (saving || testing || !canSave) && "opacity-60")}>
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
@@ -717,7 +716,7 @@ function InvitesSection() {
                   <div className="text-[11px] text-navy-500 mt-0.5">
                     {inv.use_count}/{inv.max_uses === 0 ? "∞" : inv.max_uses} used
                     {inv.expires_at && (
-                      <> &middot; {expired ? "expired" : `expires ${new Date(inv.expires_at).toLocaleDateString()}`}</>
+                      <> &middot; {expired ? "expired" : `expires ${formatDue(inv.expires_at)}`}</>
                     )}
                   </div>
                 </div>
@@ -816,8 +815,8 @@ function SessionsSection() {
                   <div className="text-[11px] text-navy-500 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap" title={s.user_agent || undefined}>
                     {deviceLabel(s.user_agent)}
                   </div>
-                  <div className="text-[11px] text-navy-400 mt-0.5 font-mono">
-                    Last active {new Date(s.last_seen_at).toLocaleString()}
+                  <div className="text-[11px] text-navy-400 mt-0.5">
+                    Last active {relTime(s.last_seen_at)}
                   </div>
                 </div>
                 {!s.is_current && (

@@ -315,7 +315,14 @@ function ProjectCard({ project: p, onClick, onShare }: { project: Project; onCli
           {STAGE_LABELS[p.stage] || p.stage}
         </span>
         <span>{total} task{total !== 1 ? "s" : ""}</span>
-        {p.due_date && <span>Due {new Date(p.due_date).toLocaleDateString()}</span>}
+        {p.due_date && (() => {
+          const label = formatDue(p.due_date);
+          return (
+            <span className={label === "Overdue" ? "text-red-500 font-semibold" : ""}>
+              {label === "Overdue" ? "Overdue" : `Due ${label}`}
+            </span>
+          );
+        })()}
       </div>
     </div>
   );
@@ -547,7 +554,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <span className={cn("w-2 h-2 rounded-full", col.color)} />
                   <span className="text-[11px] font-bold text-navy-600 uppercase tracking-wider">{col.title}</span>
-                  <span className="text-[11px] font-bold text-navy-400 ml-auto">{items.length}</span>
+                  <span className="ml-auto min-w-[18px] h-[18px] bg-navy-200 text-navy-600 rounded-full text-[10px] font-bold flex items-center justify-center px-1">{items.length}</span>
                 </div>
                 {items.length === 0 && !draggedId && (
                   <div className="text-[12px] text-navy-400 text-center py-6">No tasks</div>
