@@ -188,6 +188,12 @@ export default function TasksView() {
           )}
         </div>
 
+        {(priorityFilter !== "all" || projectFilter !== "all") && !loading && (
+          <span className="text-[11px] text-navy-500 font-medium">
+            {filtered.length} shown
+          </span>
+        )}
+
         <button
           onClick={() => { setEditing(null); setShowCreate(true); }}
           className="ml-auto bg-blue-600 text-white border-none px-3 py-[7px] rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit]"

@@ -85,6 +85,7 @@ export default function DocumentEditor({
   const selectedFolderIdRef = useRef<string | null>(folderId ?? null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSavingRef = useRef(false);
+  const isDirtyRef = useRef(false);
   const locationPickerRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
 
@@ -198,6 +199,7 @@ export default function DocumentEditor({
       }
       setSaveStatus("saved");
       setSavedTime(new Date());
+      isDirtyRef.current = false;
       onSaved?.(doc);
     } catch (err) {
       console.error("Document save failed:", err);
@@ -220,8 +222,16 @@ export default function DocumentEditor({
   }, [save]);
 
   function scheduleSave() {
+    isDirtyRef.current = true;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => { save(); }, 2000);
+  }
+
+  function handleClose() {
+    if (isDirtyRef.current || isSavingRef.current) {
+      if (!confirm("Changes are still saving — close anyway? You may lose recent edits.")) return;
+    }
+    onClose();
   }
 
   function handleTitleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -338,7 +348,7 @@ export default function DocumentEditor({
         {/* Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white shrink-0">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="bg-slate-50 border border-slate-200 text-slate-600 p-2 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors flex items-center gap-1.5 text-[12px] font-semibold font-[inherit]"
           >
             <ChevronLeft size={15} />

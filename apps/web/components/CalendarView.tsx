@@ -309,7 +309,12 @@ function MonthGrid({ cursor, events, onSelect, onClickDay }: MonthGridProps) {
                   );
                 })}
                 {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-navy-500 pl-1.5">+{dayEvents.length - 3} more</div>
+                  <div
+                    className="text-[10px] text-navy-500 pl-1.5 cursor-default select-none"
+                    title={dayEvents.slice(3).map(e => `• ${e.title}`).join("\n")}
+                  >
+                    +{dayEvents.length - 3} more
+                  </div>
                 )}
               </div>
             );
@@ -587,6 +592,7 @@ function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EventFormState>(() => eventToFormState(event));
   const [saving, setSaving] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function handleSave() {
     if (!form.title.trim() || saving) return;
@@ -675,19 +681,39 @@ function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
         {event.description && (
           <p className="text-[13px] text-navy-700 leading-relaxed my-3">{event.description}</p>
         )}
-        <div className="flex gap-2 justify-end mt-4">
-          <button
-            onClick={onDelete}
-            className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-500/[0.08] text-red-600 border border-red-500/20 cursor-pointer font-sans"
-          >
-            Delete
-          </button>
-          <button
-            onClick={onClose}
-            className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-navy-900 text-white border-none cursor-pointer font-sans"
-          >
-            Close
-          </button>
+        <div className="flex gap-2 justify-end mt-4 items-center flex-wrap">
+          {confirmingDelete ? (
+            <>
+              <span className="text-[12px] text-red-600 font-semibold mr-auto">Delete this event?</span>
+              <button
+                onClick={onDelete}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 text-white border-none cursor-pointer font-sans"
+              >
+                Yes, delete
+              </button>
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-transparent border border-navy-200 text-navy-700 cursor-pointer font-sans"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-500/[0.08] text-red-600 border border-red-500/20 cursor-pointer font-sans"
+              >
+                Delete
+              </button>
+              <button
+                onClick={onClose}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-navy-900 text-white border-none cursor-pointer font-sans"
+              >
+                Close
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

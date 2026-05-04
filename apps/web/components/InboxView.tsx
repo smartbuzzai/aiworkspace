@@ -45,6 +45,7 @@ interface ComposeModalProps {
 interface ThreadDetailProps {
   thread: Thread;
   messages: EmailMessage[];
+  loadingMessages: boolean;
   onBack: () => void;
   isMobile: boolean;
   onStar: (id: string) => void;
@@ -78,6 +79,7 @@ export default function InboxView() {
   const [selected, setSelected] = useState<Thread | null>(null);
   const [messages, setMessages] = useState<EmailMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [showDetail, setShowDetail] = useState<boolean>(false);
   const [showCompose, setShowCompose] = useState<boolean>(false);
@@ -123,12 +125,16 @@ export default function InboxView() {
   async function openThread(thread: Thread) {
     setSelected(thread);
     setShowDetail(true);
+    setMessages([]);
+    setLoadingMessages(true);
     try {
       const r = await fetch(`/api/emails/threads/${thread.id}`, { credentials: "include" });
       const d = await r.json();
       setMessages(d.messages || []);
       setThreads((t) => t.map((x) => (x.id === thread.id ? { ...x, unread_count: 0 } : x)));
-    } catch { /* swallow */ }
+    } catch { /* swallow */ } finally {
+      setLoadingMessages(false);
+    }
   }
 
   if (accounts.length === 0 && !loading) {
@@ -264,6 +270,7 @@ export default function InboxView() {
           <ThreadDetail
             thread={selected}
             messages={messages}
+            loadingMessages={loadingMessages}
             onBack={() => setShowDetail(false)}
             isMobile={isMobile}
             onStar={async (id: string) => {
@@ -314,7 +321,7 @@ export default function InboxView() {
 /*  Thread detail                                                      */
 /* ------------------------------------------------------------------ */
 
-function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, onDelete, onSent }: ThreadDetailProps) {
+function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onStar, onArchive, onDelete, onSent }: ThreadDetailProps) {
   const [replyOpen, setReplyOpen] = useState<boolean>(false);
   const [replyBody, setReplyBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
@@ -400,6 +407,22 @@ function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, o
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-5">
+        {loadingMessages ? (
+          <div className="space-y-4 animate-pulse">
+            {[1, 2].map(i => (
+              <div key={i} className="rounded-[10px] border border-navy-200 bg-navy-50 p-4 space-y-2.5">
+                <div className="flex justify-between">
+                  <div className="h-3.5 bg-navy-200 rounded w-32" />
+                  <div className="h-3 bg-navy-100 rounded w-24" />
+                </div>
+                <div className="h-3 bg-navy-100 rounded w-full" />
+                <div className="h-3 bg-navy-100 rounded w-5/6" />
+                <div className="h-3 bg-navy-100 rounded w-4/6" />
+              </div>
+            ))}
+          </div>
+        ) : (
+        <>
         {thread.ai_summary && (
           <div className="bg-gradient-to-br from-navy-900 to-navy-800 rounded-xl p-4 mb-5 text-white">
             <div className="flex items-center gap-[7px] mb-2 text-[11px] font-bold uppercase tracking-widest text-blue-400">
@@ -432,6 +455,8 @@ function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, o
             </div>
           </div>
         ))}
+        </>
+        )}
       </div>
 
       {/* Reply composer */}
