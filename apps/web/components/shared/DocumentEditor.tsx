@@ -77,6 +77,7 @@ export default function DocumentEditor({
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [documentLoaded, setDocumentLoaded] = useState(!docId);
+  const [pendingContent, setPendingContent] = useState<{ content: Record<string, unknown>; content_html: string } | null>(null);
 
   const titleRef = useRef(title);
   const docIdRef = useRef(docIdState);
@@ -133,8 +134,9 @@ export default function DocumentEditor({
     onUpdate: () => { scheduleSave(); },
   });
 
+  // Fetch document data independently of editor readiness
   useEffect(() => {
-    if (!docId || !editor) return;
+    if (!docId) return;
     fetch(`/api/documents/${docId}`, { credentials: "include" })
       .then(r => r.json())
       .then((doc: DocRecord) => {
@@ -144,16 +146,22 @@ export default function DocumentEditor({
         selectedProjectIdRef.current = doc.project_id;
         setSelectedFolderId(doc.folder_id);
         selectedFolderIdRef.current = doc.folder_id;
-        if (doc.content && typeof doc.content === "object" && Object.keys(doc.content).length > 0) {
-          editor.commands.setContent(doc.content as any);
-        } else if (doc.content_html) {
-          editor.commands.setContent(doc.content_html);
-        }
+        setPendingContent({ content: doc.content, content_html: doc.content_html });
       })
       .catch(err => console.error("Failed to load document:", err))
       .finally(() => setDocumentLoaded(true));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docId]);
+
+  // Apply fetched content once editor is ready
+  useEffect(() => {
+    if (!editor || !pendingContent) return;
+    if (pendingContent.content && typeof pendingContent.content === "object" && Object.keys(pendingContent.content).length > 0) {
+      editor.commands.setContent(pendingContent.content as any);
+    } else if (pendingContent.content_html) {
+      editor.commands.setContent(pendingContent.content_html);
+    }
+    setPendingContent(null);
+  }, [editor, pendingContent]);
 
   const save = useCallback(async () => {
     if (isSavingRef.current || !editor) return;
