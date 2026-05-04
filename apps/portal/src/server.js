@@ -7,7 +7,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import pg from "pg";
-import { portalPage } from "./page.js";
+import { portalPage, errorPage } from "./page.js";
 
 const { Pool } = pg;
 
@@ -44,8 +44,15 @@ app.decorateRequest("project", null);
 
 async function resolveToken(req, reply) {
   const { token } = req.params;
+  const isHtmlRequest = (req.headers.accept || "").includes("text/html");
+
   if (!token || token.length < 10) {
-    return reply.code(400).send({ error: "Invalid token" });
+    reply.header("Content-Type", isHtmlRequest ? "text/html; charset=utf-8" : "application/json");
+    return reply.code(400).send(
+      isHtmlRequest
+        ? errorPage("Invalid link", "This link appears to be malformed. Please contact the project owner for a new link.")
+        : { error: "Invalid token" }
+    );
   }
 
   const { rows } = await query(
@@ -58,7 +65,12 @@ async function resolveToken(req, reply) {
   );
 
   if (rows.length === 0) {
-    return reply.code(404).send({ error: "Share not found or expired" });
+    reply.header("Content-Type", isHtmlRequest ? "text/html; charset=utf-8" : "application/json");
+    return reply.code(404).send(
+      isHtmlRequest
+        ? errorPage("Link expired or revoked", "This project link is no longer active. Please contact the project owner to request a new link.")
+        : { error: "Share not found or expired" }
+    );
   }
 
   req.share = rows[0];

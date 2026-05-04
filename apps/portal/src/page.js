@@ -7,6 +7,33 @@ function esc(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+export function errorPage(title, message) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'DM Sans', system-ui, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 48px 40px; max-width: 440px; width: 100%; margin: 20px; text-align: center; }
+.icon { font-size: 40px; margin-bottom: 20px; }
+h1 { font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+p { font-size: 14px; color: #64748b; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">🔒</div>
+  <h1>${esc(title)}</h1>
+  <p>${esc(message)}</p>
+</div>
+</body>
+</html>`;
+}
+
 export function portalPage(project, share, token) {
   const basePath = `/portal/${token}`;
 

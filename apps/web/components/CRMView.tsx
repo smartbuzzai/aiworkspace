@@ -78,6 +78,7 @@ export default function CRMView() {
   const [selected, setSelected] = useState<Contact | null>(null);
   const [interactions, setInteractions] = useState<Interaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingInteractions, setLoadingInteractions] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
 
@@ -110,12 +111,16 @@ export default function CRMView() {
 
   async function selectContact(c: Contact) {
     setSelected(c);
+    setInteractions([]);
+    setLoadingInteractions(true);
     try {
       const r = await fetch(`/api/contacts/${c.id}`, { credentials: "include" });
       const d = await r.json();
       setInteractions(d.interactions || []);
     } catch {
       setInteractions([]);
+    } finally {
+      setLoadingInteractions(false);
     }
   }
 
@@ -237,7 +242,7 @@ export default function CRMView() {
         {/* Right: detail panel */}
         <div className="bg-white border border-navy-200 rounded-[14px] p-6 sticky top-[88px] self-start max-h-[calc(100vh-110px)] overflow-y-auto">
           {selected ? (
-            <DetailPanel contact={selected} interactions={interactions} onEdit={() => setEditContact(selected)} />
+            <DetailPanel contact={selected} interactions={interactions} loadingInteractions={loadingInteractions} onEdit={() => setEditContact(selected)} />
           ) : (
             <div className="text-navy-400 text-[13px] text-center py-10">
               Select a contact to view details.
@@ -271,7 +276,7 @@ export default function CRMView() {
 /*  Detail panel                                                       */
 /* ------------------------------------------------------------------ */
 
-function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; interactions: Interaction[]; onEdit: () => void }) {
+function DetailPanel({ contact, interactions, loadingInteractions, onEdit }: { contact: Contact; interactions: Interaction[]; loadingInteractions: boolean; onEdit: () => void }) {
   const initial = (contact.name || "?")[0].toUpperCase();
   const sm = STATUS_MAP[contact.status] || STATUS_MAP.active;
   const [showCompose, setShowCompose] = useState(false);
@@ -337,7 +342,23 @@ function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; inte
       )}
 
       {/* Activity timeline */}
-      {interactions.length > 0 && (
+      {loadingInteractions && (
+        <div className="mb-5">
+          <div className="text-[10px] font-bold text-navy-500 uppercase tracking-[1.5px] mb-2">Recent activity</div>
+          <div className="flex flex-col gap-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex gap-2.5 py-2">
+                <div className="w-6 h-6 rounded-md bg-navy-100 animate-pulse shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-navy-100 rounded animate-pulse w-3/4" />
+                  <div className="h-2.5 bg-navy-100 rounded animate-pulse w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {!loadingInteractions && interactions.length > 0 && (
         <div className="mb-5">
           <div className="text-[10px] font-bold text-navy-500 uppercase tracking-[1.5px] mb-2">Recent activity</div>
           <div className="flex flex-col">

@@ -520,6 +520,9 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
                   <span className="text-[11px] font-bold text-navy-600 uppercase tracking-wider">{col.title}</span>
                   <span className="text-[11px] font-bold text-navy-400 ml-auto">{items.length}</span>
                 </div>
+                {items.length === 0 && !draggedId && (
+                  <div className="text-[12px] text-navy-400 text-center py-6">No tasks</div>
+                )}
                 {items.map(task => (
                   <div
                     key={task.id}

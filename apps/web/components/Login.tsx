@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, type FormEvent } from "react";
-import { Sparkles, Mail, ArrowRight } from "lucide-react";
+import { Sparkles, Mail, ArrowRight, RotateCcw } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { User } from "../lib/types";
 
@@ -25,6 +25,19 @@ export default function Login({ onSuccess }: LoginProps) {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resendCountdown, setResendCountdown] = useState(0);
+
+  useEffect(() => {
+    if (!sent) return;
+    setResendCountdown(30);
+    const id = setInterval(() => {
+      setResendCountdown(n => {
+        if (n <= 1) { clearInterval(id); return 0; }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [sent]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -77,8 +90,22 @@ export default function Login({ onSuccess }: LoginProps) {
         </p>
 
         {sent ? (
-          <div className="bg-green-500/10 border border-green-500/25 text-green-400 p-3.5 rounded-[10px] text-[13px] leading-relaxed">
-            Check your inbox. The link expires in 15 minutes.
+          <div className="flex flex-col gap-3">
+            <div className="bg-green-500/10 border border-green-500/25 text-green-400 p-3.5 rounded-[10px] text-[13px] leading-relaxed">
+              Check your inbox at <span className="font-semibold text-green-300">{email}</span>. The link expires in 15 minutes.
+            </div>
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              disabled={resendCountdown > 0}
+              className={cn(
+                "w-full flex items-center justify-center gap-1.5 bg-transparent border border-white/10 text-navy-400 py-2.5 rounded-[10px] text-[13px] font-semibold cursor-pointer transition-colors",
+                resendCountdown > 0 ? "opacity-50 cursor-not-allowed" : "hover:text-white hover:border-white/25"
+              )}
+            >
+              <RotateCcw size={13} />
+              {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : "Resend link"}
+            </button>
           </div>
         ) : (
           <form onSubmit={submit}>
