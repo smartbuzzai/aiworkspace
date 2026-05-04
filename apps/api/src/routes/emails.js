@@ -72,7 +72,8 @@ export default async function emailsRoutes(app) {
     const data = schema.parse(req.body);
 
     const { rows } = await query(
-      `SELECT * FROM email_accounts WHERE id = $1 AND user_id = $2 AND is_active`,
+      `SELECT id, email_address, smtp_host, smtp_port, smtp_user, smtp_pass_enc
+         FROM email_accounts WHERE id = $1 AND user_id = $2 AND is_active`,
       [data.account_id, req.user.user_id]
     );
     if (rows.length === 0) return reply.code(404).send({ error: "Account not found" });
@@ -84,22 +85,39 @@ export default async function emailsRoutes(app) {
       host: acc.smtp_host,
       port: acc.smtp_port,
       secure: acc.smtp_port === 465,
-      auth: { user: acc.smtp_user, pass: smtpPass }
+      auth: { user: acc.smtp_user, pass: smtpPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
 
-    const info = await transporter.sendMail({
-      from: acc.email_address,
-      to: data.to.join(","),
-      cc: data.cc.join(","),
-      subject: data.subject,
-      text: data.body_text,
-      html: data.body_html,
-      inReplyTo: data.in_reply_to,
-      references: data.in_reply_to ? [data.in_reply_to] : undefined
-    });
+    let info;
+    try {
+      info = await transporter.sendMail({
+        from: acc.email_address,
+        to: data.to.join(","),
+        cc: data.cc.join(","),
+        subject: data.subject,
+        text: data.body_text,
+        html: data.body_html,
+        inReplyTo: data.in_reply_to,
+        references: data.in_reply_to ? [data.in_reply_to] : undefined
+      });
+    } catch (err) {
+      req.log.error({ err, account_id: acc.id }, "SMTP send failed");
+      return reply.code(502).send({ error: "Failed to send email. Check your SMTP settings." });
+    }
 
     // Persist a local copy
     let threadId = data.thread_id;
+    if (threadId) {
+      // Verify thread belongs to this user
+      const { rows: threadCheck } = await query(
+        `SELECT id FROM email_threads WHERE id = $1 AND user_id = $2`,
+        [threadId, req.user.user_id]
+      );
+      if (threadCheck.length === 0) threadId = null; // fall through to create new thread
+    }
     if (!threadId) {
       const { rows: t } = await query(
         `INSERT INTO email_threads (user_id, account_id, subject, participants, last_message_at)

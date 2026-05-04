@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { query } from "../lib/db.js";
+import { queueClientNotify } from "../lib/notify.js";
 
 const taskSchema = z.object({
   project_id: z.string().uuid().optional().nullable(),
@@ -20,7 +21,9 @@ export default async function tasksRoutes(app) {
     let sql = `SELECT t.*, p.name AS project_name
                  FROM tasks t
             LEFT JOIN projects p ON p.id = t.project_id
-                WHERE t.user_id = $1`;
+                WHERE (t.user_id = $1
+                  OR t.project_id IN (SELECT id FROM projects WHERE user_id = $1)
+                  OR t.project_id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = $1))`;
     if (project_id) { params.push(project_id); sql += ` AND t.project_id = $${params.length}`; }
     if (status)     { params.push(status);     sql += ` AND t.status = $${params.length}`; }
     sql += ` ORDER BY
@@ -54,12 +57,17 @@ export default async function tasksRoutes(app) {
       [req.params.id, req.user.user_id, ...keys.map(k => data[k])]
     );
     if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
+    if (data.status && rows[0].project_id && rows[0].client_visible) {
+      const eventType = data.status === "done" ? "task_completed" : "task_started";
+      queueClientNotify(rows[0].project_id, eventType, rows[0].title);
+    }
     return { task: rows[0] };
   });
 
-  app.delete("/:id", async (req) => {
-    await query(`DELETE FROM tasks WHERE id = $1 AND user_id = $2`,
+  app.delete("/:id", async (req, reply) => {
+    const { rowCount } = await query(`DELETE FROM tasks WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.user_id]);
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
     return { ok: true };
   });
 }

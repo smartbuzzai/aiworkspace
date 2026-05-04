@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "description": "AI Workspace — hooks catch the late-surfacing bugs that kept appearing in marathon sessions",
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "description": "Validate docker-compose.yml after any edit to it",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == *\"docker-compose.yml\" || \"$CLAUDE_TOOL_FILE_PATH\" == *\"compose.yml\" ]]; then docker compose config --quiet 2>&1 | head -40; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "description": "Syntax-check JS files after edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == *.js ]]; then node --check \"$CLAUDE_TOOL_FILE_PATH\" 2>&1 | head -20; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "description": "Sanity-check SQL files for balanced parens and trailing semicolon",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == *.sql ]]; then awk 'BEGIN{p=0} {for(i=1;i<=length($0);i++){c=substr($0,i,1); if(c==\"(\")p++; if(c==\")\")p--}} END{if(p!=0) print \"WARN: unbalanced parens: \" p; else print \"paren balance OK\"}' \"$CLAUDE_TOOL_FILE_PATH\"; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "description": "Flag .env writes — Claude should be editing .env.example, not .env",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_FILE_PATH\" == *\"/.env\" && \"$CLAUDE_TOOL_FILE_PATH\" != *\".env.example\" ]]; then echo 'WARN: wrote to .env directly. Edit .env.example instead and let the user fill in real values.'; fi"
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "description": "Block accidental destructive Docker commands",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "case \"$CLAUDE_TOOL_BASH_COMMAND\" in *\"docker system prune -a\"*|*\"docker volume rm\"*|*\"docker compose down -v\"*|*\"rm -rf /data\"*|*\"rm -rf /home\"*) echo 'BLOCKED: destructive command requires explicit user confirmation. Ask first.' >&2; exit 2;; esac"
+          }
+        ]
+      }
+    ]
+  },
+
+  "permissions": {
+    "allow": [
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker compose config:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker inspect:*)",
+      "Bash(node --check:*)",
+      "Bash(cat:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(pwd)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git push --force*)"
+    ],
+    "deny": [
+      "Bash(docker system prune*)",
+      "Bash(docker volume rm*)",
+      "Bash(docker compose down -v*)",
+      "Bash(rm -rf /data*)",
+      "Bash(rm -rf /home*)",
+      "Bash(rm -rf /etc*)",
+      "Bash(rm -rf /var*)",
+      "Bash(git reset --hard*)"
+    ]
+  }
+}

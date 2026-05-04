@@ -47,24 +47,28 @@ export default async function pushRoutes(app) {
     return { ok: true };
   });
 
-  // GET /push/notifications — list in-app notifications
+  // GET /push/notifications — list in-app notifications (paginated)
   app.get("/notifications", async (req) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
     const { rows } = await query(
       `SELECT * FROM notifications
         WHERE user_id = $1
-        ORDER BY created_at DESC LIMIT 50`,
-      [req.user.user_id]
+        ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
+      [req.user.user_id, limit + 1, offset]
     );
-    return { notifications: rows };
+    const hasMore = rows.length > limit;
+    return { notifications: rows.slice(0, limit), hasMore };
   });
 
   // POST /push/notifications/:id/read
-  app.post("/notifications/:id/read", async (req) => {
-    await query(
+  app.post("/notifications/:id/read", async (req, reply) => {
+    const { rowCount } = await query(
       `UPDATE notifications SET read_at = now()
         WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.user_id]
     );
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
     return { ok: true };
   });
 }

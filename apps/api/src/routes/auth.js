@@ -30,12 +30,43 @@ export default async function authRoutes(app) {
 
   // POST /auth/request — send magic link
   app.post("/request", async (req, reply) => {
-    const schema = z.object({ email: z.string().email() });
-    const { email } = schema.parse(req.body);
+    const schema = z.object({ email: z.string().email(), invite_code: z.string().optional() });
+    const { email, invite_code } = schema.parse(req.body);
     const normalized = email.toLowerCase();
 
     const limit = await checkRateLimit(normalized, req.ip);
     if (limit) return reply.code(429).send({ error: limit });
+
+    // --- Access gating ---
+    const { rows: existingUser } = await query(
+      `SELECT id FROM users WHERE email = $1`, [normalized]
+    );
+    const isExisting = existingUser.length > 0;
+
+    if (!isExisting) {
+      const allowedDomains = (process.env.ALLOWED_DOMAINS || "")
+        .split(",").map(d => d.trim().toLowerCase()).filter(Boolean);
+      const emailDomain = normalized.split("@")[1];
+      const domainAllowed = allowedDomains.length > 0 && allowedDomains.includes(emailDomain);
+
+      if (!domainAllowed) {
+        if (!invite_code) {
+          return reply.code(403).send({ error: "An invite code is required to create a new account." });
+        }
+        const { rows: inv } = await query(
+          `UPDATE invites SET use_count = use_count + 1
+            WHERE code = $1
+              AND (max_uses = 0 OR use_count < max_uses)
+              AND (expires_at IS NULL OR expires_at > now())
+            RETURNING id`,
+          [invite_code]
+        );
+        if (inv.length === 0) {
+          return reply.code(403).send({ error: "Invalid or expired invite code." });
+        }
+      }
+    }
+    // --- End access gating ---
 
     const token = generateToken(32);
     const tokenHash = hashToken(token);
@@ -49,8 +80,7 @@ export default async function authRoutes(app) {
 
     const link = `${process.env.APP_URL}/auth/verify?token=${token}`;
 
-    // For MVP: log the link. Wire up SMTP once the first email account is connected.
-    req.log.info({ email, link }, "magic link issued");
+    req.log.info({ email }, "magic link issued");
 
     if (process.env.SMTP_HOST) {
       try {

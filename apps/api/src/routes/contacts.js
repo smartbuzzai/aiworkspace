@@ -90,11 +90,12 @@ export default async function contactsRoutes(app) {
   });
 
   // DELETE /contacts/:id
-  app.delete("/:id", async (req) => {
-    await query(
+  app.delete("/:id", async (req, reply) => {
+    const { rowCount } = await query(
       `DELETE FROM contacts WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.user_id]
     );
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
     return { ok: true };
   });
 }

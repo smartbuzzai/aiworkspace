@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { Sparkles, Reply, Archive, Star, Mail, Trash2, Send, X, Search, Plus, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
+import { useToast } from "./shared/Toast";
 
 /* ------------------------------------------------------------------ */
 /*  TypeScript interfaces                                              */
@@ -318,6 +319,7 @@ function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, o
   const [replyBody, setReplyBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { toast } = useToast();
 
   async function handleSend() {
     if (!replyBody.trim() || sending) return;
@@ -338,9 +340,13 @@ function ThreadDetail({ thread, messages, onBack, isMobile, onStar, onArchive, o
         }),
       });
       if (r.ok) {
+        toast("success", "Reply sent.");
         setReplyBody("");
         setReplyOpen(false);
         if (onSent) onSent();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to send reply.");
       }
     } finally {
       setSending(false);
@@ -526,6 +532,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
   const [body, setBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const [showCc, setShowCc] = useState<boolean>(false);
+  const { toast } = useToast();
 
   async function handleSend() {
     if (!to.trim() || !subject.trim() || sending) return;
@@ -545,7 +552,13 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
           body_text: body,
         }),
       });
-      if (r.ok) onSent();
+      if (r.ok) {
+        toast("success", "Email sent.");
+        onSent();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to send email.");
+      }
     } finally {
       setSending(false);
     }

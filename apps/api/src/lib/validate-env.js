@@ -53,7 +53,7 @@ export function validateEnv(role = "api") {
       try {
         new URL(process.env[key]);
       } catch {
-        console.error(`FATAL: ${key} is not a valid URL: ${process.env[key]}`);
+        console.error(`FATAL: ${key} is not a valid URL (value redacted)`);
         process.exit(1);
       }
     }

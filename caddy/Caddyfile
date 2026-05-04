@@ -12,8 +12,6 @@
 
 # ─── Web app ───────────────────────────────────────────────────
 {$APP_HOST} {
-	encode zstd gzip
-
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
@@ -23,7 +21,26 @@
 		-Server
 	}
 
-	reverse_proxy web:3000
+	# API routes: proxy directly to Fastify, no gzip (SSE must stream unbuffered)
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:4000 {
+			flush_interval -1
+		}
+	}
+
+	# Client portal: public, token-gated, separate container
+	handle /portal/* {
+		uri strip_prefix /portal
+		encode zstd gzip
+		reverse_proxy portal:4100
+	}
+
+	# Web app: gzip enabled
+	handle {
+		encode zstd gzip
+		reverse_proxy web:3000
+	}
 }
 
 # ─── API ───────────────────────────────────────────────────────
@@ -47,34 +64,101 @@
 	}
 }
 
-# ─── n8n (automation dashboard) ────────────────────────────────
-{$N8N_HOST} {
+
+# ─── AdvisoryIQ ────────────────────────────────────────────────
+{$ADVISOROS_HOST} {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'"
+		-Server
+	}
+
 	encode zstd gzip
-	reverse_proxy n8n:5678
+	reverse_proxy advisoriq:3000
+}
+
+# ─── AdvisorIntel (Premio RIA Intelligence Platform) ───────────
+advisorintel.smartbuzzai.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'"
+		-Server
+	}
+
+	encode zstd gzip
+	reverse_proxy advisorintel:3001
 }
 
 # ─── MinIO console (file admin) ────────────────────────────────
 {$FILES_HOST} {
 	encode zstd gzip
+	basic_auth {
+		admin $2a$14$vrnkxGm1qAn11rouYI1OVeiZFcFRgWmActtC/6OK2/dG3fEA19a46
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
 	reverse_proxy minio:9001
 }
 
 # ─── CalDAV ────────────────────────────────────────────────────
 {$DAV_HOST} {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		-Server
+	}
 	reverse_proxy radicale:5232
 }
 
 # ─── Monitoring ────────────────────────────────────────────────
 {$STATUS_HOST} {
 	encode zstd gzip
+	basic_auth {
+		admin $2a$14$vrnkxGm1qAn11rouYI1OVeiZFcFRgWmActtC/6OK2/dG3fEA19a46
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
 	reverse_proxy uptime:3001
 }
 
 {$LOGS_HOST} {
 	encode zstd gzip
 	basic_auth {
-		# Generate hash with: docker exec caddy caddy hash-password
-		admin $2a$14$REPLACE_WITH_GENERATED_HASH
+		admin $2a$14$vrnkxGm1qAn11rouYI1OVeiZFcFRgWmActtC/6OK2/dG3fEA19a46
 	}
 	reverse_proxy dozzle:8080
+}
+
+# ─── Spartan VPS Dashboard ─────────────────────────────────────
+spartan.smartbuzzai.com {
+	encode zstd gzip
+
+	@blocked not remote_ip 70.180.41.54
+	respond @blocked 403
+
+	basic_auth {
+		"marc@smartbuzzai.com" $2a$14$U5DT2YNztmor.ydo64dzvuMxDBYzUkY9xyOqkZaN4RfzATKBmaT62
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		-Server
+	}
+	reverse_proxy spartan:8000
 }

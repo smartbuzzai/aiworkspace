@@ -58,9 +58,10 @@ export default async function eventsRoutes(app) {
     return { event: rows[0] };
   });
 
-  app.delete("/:id", async (req) => {
-    await query(`DELETE FROM events WHERE id = $1 AND user_id = $2`,
+  app.delete("/:id", async (req, reply) => {
+    const { rowCount } = await query(`DELETE FROM events WHERE id = $1 AND user_id = $2`,
       [req.params.id, req.user.user_id]);
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
     return { ok: true };
   });
 }

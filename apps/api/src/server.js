@@ -8,6 +8,7 @@ import { validateEnv } from "./lib/validate-env.js";
 validateEnv("api");
 
 import Fastify from "fastify";
+import { ZodError } from "zod";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
@@ -30,6 +31,8 @@ import filesRoutes from "./routes/files.js";
 import assistantRoutes from "./routes/assistant.js";
 import accountsRoutes from "./routes/accounts.js";
 import pushRoutes from "./routes/push.js";
+import inviteRoutes from "./routes/invites.js";
+import documentsRoutes from "./routes/documents.js";
 
 const app = Fastify({
   logger: { level: process.env.LOG_LEVEL || "info" },
@@ -53,7 +56,11 @@ await app.register(rateLimit, {
   max: 300,
   timeWindow: "1 minute",
   redis,
-  skipOnError: true
+  skipOnError: true,
+  keyGenerator: (req) => {
+    // Rate limit by user ID for authenticated requests, IP for unauthenticated
+    return req.user?.user_id || req.ip;
+  }
 });
 
 // ─── Health + readiness ───────────────────────────────────────
@@ -88,9 +95,20 @@ await app.register(filesRoutes, { prefix: "/files" });
 await app.register(assistantRoutes, { prefix: "/assistant" });
 await app.register(accountsRoutes, { prefix: "/accounts" });
 await app.register(pushRoutes, { prefix: "/push" });
+await app.register(inviteRoutes, { prefix: "/invites" });
+await app.register(documentsRoutes, { prefix: "/documents" });
 
 // ─── Global error handler ─────────────────────────────────────
 app.setErrorHandler((err, req, reply) => {
+  // Zod validation errors → 400 with field details
+  if (err instanceof ZodError) {
+    const fields = err.errors.map(e => ({
+      path: e.path.join("."),
+      message: e.message,
+    }));
+    return reply.code(400).send({ error: "Validation failed", fields });
+  }
+
   req.log.error(err);
   const status = err.statusCode || 500;
   reply.code(status).send({

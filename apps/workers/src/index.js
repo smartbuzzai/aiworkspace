@@ -116,8 +116,8 @@ new Worker("imap-sync", async (job) => {
             `SELECT id FROM email_threads
               WHERE user_id = $1 AND account_id = $2
                 AND (
-                  (in_reply_to IS NOT NULL AND EXISTS (
-                    SELECT 1 FROM emails e WHERE e.thread_id = email_threads.id AND e.message_id = $3
+                  ($3::text IS NOT NULL AND EXISTS (
+                    SELECT 1 FROM emails e WHERE e.thread_id = email_threads.id AND e.message_id = $3::text
                   ))
                   OR (subject ILIKE $4 AND participants && $5::text[])
                 )
@@ -150,26 +150,30 @@ new Worker("imap-sync", async (job) => {
              parsed.date || new Date(), msg.uid]
           );
 
-          // Save attachments to MinIO + email_attachments table
           if (emailRows.length && parsed.attachments?.length) {
-            for (const att of parsed.attachments) {
-              try {
-                const safeName = (att.filename || "attachment").replace(/[^\w.-]/g, "_");
-                const s3_key = `${acc.user_id}/email-att/${emailRows[0].id}/${safeName}`;
-                await mc.putObject(S3_BUCKET, s3_key, att.content, att.content.length, {
-                  "Content-Type": att.contentType || "application/octet-stream"
-                });
-                await db.query(
-                  `INSERT INTO email_attachments
-                     (email_id, filename, content_type, size_bytes, s3_key)
-                   VALUES ($1,$2,$3,$4,$5)`,
-                  [emailRows[0].id, att.filename || "attachment",
-                   att.contentType, att.content.length, s3_key]
-                );
-              } catch (attErr) {
-                console.warn("attachment save failed:", attErr.message);
+            await Promise.all(parsed.attachments.map(async (att) => {
+              const safeName = (att.filename || "attachment").replace(/[^\w.-]/g, "_");
+              const s3_key = `${acc.user_id}/email-att/${emailRows[0].id}/${safeName}`;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                  await mc.putObject(S3_BUCKET, s3_key, att.content, att.content.length, {
+                    "Content-Type": att.contentType || "application/octet-stream"
+                  });
+                  await db.query(
+                    `INSERT INTO email_attachments
+                       (email_id, filename, content_type, size_bytes, s3_key)
+                     VALUES ($1,$2,$3,$4,$5)`,
+                    [emailRows[0].id, att.filename || "attachment",
+                     att.contentType, att.content.length, s3_key]
+                  );
+                  return;
+                } catch (attErr) {
+                  console.warn(`attachment save failed (attempt ${attempt + 1}/3): ${safeName} — ${attErr.message}`);
+                  if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                }
               }
-            }
+              console.error(`attachment permanently failed: ${safeName} for email ${emailRows[0].id}`);
+            }));
           }
 
           // Update thread metadata
@@ -330,7 +334,7 @@ async function llmComplete(prompt, maxTokens = 120) {
       stream: false,
       options: { temperature: 0.2, num_predict: maxTokens }
     })
-  }, 60000);
+  }, 120000);
   if (!r.ok) throw new Error(`llm failed: ${r.status}`);
   const j = await r.json();
   return (j.response || "").trim();
@@ -449,20 +453,20 @@ setInterval(async () => {
 // ═══════════════════════════════════════════════════════════════
 
 async function runDigestForUser(userId) {
-  const { rows: events } = await db.query(
-    `SELECT title, starts_at FROM events
-      WHERE user_id = $1 AND starts_at::date = current_date
-      ORDER BY starts_at`, [userId]);
-
-  const { rows: tasks } = await db.query(
-    `SELECT title, priority FROM tasks
-      WHERE user_id = $1 AND status IN ('open','in_progress')
-        AND priority = 'high'
-      ORDER BY due_at NULLS LAST LIMIT 5`, [userId]);
-
-  const { rows: unread } = await db.query(
-    `SELECT COUNT(*) AS n FROM email_threads
-      WHERE user_id = $1 AND unread_count > 0`, [userId]);
+  const [{ rows: events }, { rows: tasks }, { rows: unread }] = await Promise.all([
+    db.query(
+      `SELECT title, starts_at FROM events
+        WHERE user_id = $1 AND starts_at::date = current_date
+        ORDER BY starts_at`, [userId]),
+    db.query(
+      `SELECT title, priority FROM tasks
+        WHERE user_id = $1 AND status IN ('open','in_progress')
+          AND priority = 'high'
+        ORDER BY due_at NULLS LAST LIMIT 5`, [userId]),
+    db.query(
+      `SELECT COUNT(*) AS n FROM email_threads
+        WHERE user_id = $1 AND unread_count > 0`, [userId]),
+  ]);
 
   const lines = [
     `${events.length} meeting${events.length === 1 ? "" : "s"} today`,
@@ -506,7 +510,7 @@ setInterval(async () => {
   }
 }, 60 * 1000);
 
-console.log("workers online: imap-sync, embed, summarize, reminders, digest, caldav");
+console.log("workers online: imap-sync, embed, summarize, reminders, digest, caldav, client-notify");
 
 // ─── Graceful shutdown ───────────────────────────────────────
 for (const sig of ["SIGINT", "SIGTERM"]) {
@@ -674,5 +678,92 @@ new Worker("extract", async (job) => {
     }
   } catch (err) {
     console.warn("extract failed:", err.message);
+  }
+}, { connection, concurrency: 1 });
+
+// ═══════════════════════════════════════════════════════════════
+//  CLIENT NOTIFICATIONS
+//  Batches changes to shared projects and emails clients.
+//  Jobs are queued with a 5-min delay so rapid changes get batched.
+//  Job data: { project_id, events: [{ type, detail }] }
+// ═══════════════════════════════════════════════════════════════
+
+import nodemailer from "nodemailer";
+
+new Worker("client-notify", async (job) => {
+  const { project_id, events } = job.data;
+  if (!project_id || !events?.length) return;
+
+  // Get project info
+  const { rows: proj } = await db.query(
+    `SELECT name FROM projects WHERE id = $1`, [project_id]
+  );
+  if (!proj.length) return;
+  const projectName = proj[0].name;
+
+  // Get active shares with email addresses
+  const { rows: shares } = await db.query(
+    `SELECT client_name, client_email, token, notify_on
+       FROM project_shares
+      WHERE project_id = $1 AND is_active = true AND client_email IS NOT NULL`,
+    [project_id]
+  );
+  if (!shares.length) return;
+
+  // Filter shares that want notifications
+  const recipients = shares.filter(s => s.notify_on !== "none");
+  if (!recipients.length) return;
+
+  // Build the email content from batched events
+  const eventLines = events.map(e => {
+    switch (e.type) {
+      case "task_completed": return `- Task completed: ${e.detail}`;
+      case "task_started":   return `- Task started: ${e.detail}`;
+      case "update_published": return `- New status update published: ${e.detail}`;
+      case "comment_added":  return `- New comment from the team`;
+      default: return `- ${e.detail || e.type}`;
+    }
+  });
+  const summaryText = eventLines.join("\n");
+  const summaryHtml = eventLines.map(l => `<li>${l.slice(2)}</li>`).join("");
+
+  if (!process.env.SMTP_HOST) {
+    console.log(`[client-notify] SMTP not configured. Would notify ${recipients.length} client(s) about ${projectName}: ${events.length} event(s)`);
+    return;
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+
+  const APP_URL = process.env.APP_URL || "https://localhost";
+
+  for (const share of recipients) {
+    const portalUrl = `${APP_URL}/portal/${share.token}`;
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to: share.client_email,
+        subject: `Update on ${projectName}`,
+        text: `Hi ${share.client_name || "there"},\n\nHere's what's new on ${projectName}:\n\n${summaryText}\n\nView the full project: ${portalUrl}\n\nBest regards`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
+          <h2 style="margin:0 0 8px;font-size:18px">Update: ${projectName}</h2>
+          <p style="color:#64748b;font-size:13px;margin:0 0 16px">Hi ${share.client_name || "there"},</p>
+          <p style="font-size:14px;margin:0 0 12px">Here's what's new:</p>
+          <ul style="font-size:14px;color:#334155;padding-left:20px;margin:0 0 20px">${summaryHtml}</ul>
+          <a href="${portalUrl}" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">View Project Portal</a>
+          <p style="color:#94a3b8;font-size:12px;margin:24px 0 0">You received this because you have access to this project.</p>
+        </div>`
+      });
+      console.log(`[client-notify] Emailed ${share.client_email} about ${projectName}`);
+    } catch (err) {
+      console.warn(`[client-notify] Failed to email ${share.client_email}:`, err.message);
+    }
   }
 }, { connection, concurrency: 1 });

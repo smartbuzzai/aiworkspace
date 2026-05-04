@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Sparkles, Mail, ArrowRight } from "lucide-react";
 import { cn } from "../lib/cn";
 import type { User } from "../lib/types";
@@ -10,18 +10,44 @@ interface LoginProps {
 
 export default function Login({ onSuccess }: LoginProps) {
   const [email, setEmail] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [showInvite, setShowInvite] = useState(false);
+
+  // Auto-fill invite code from ?invite= URL parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invite = params.get("invite");
+    if (invite) {
+      setInviteCode(invite);
+      setShowInvite(true);
+    }
+  }, []);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setError("");
     try {
-      await fetch("/api/auth/request", {
+      const body: any = { email };
+      if (inviteCode.trim()) body.invite_code = inviteCode.trim();
+      const r = await fetch("/api/auth/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(body),
       });
+      if (!r.ok) {
+        const d = await r.json();
+        if (r.status === 403) {
+          setShowInvite(true);
+          setError(d.error || "An invite code is required.");
+          return;
+        }
+        setError(d.error || "Something went wrong.");
+        return;
+      }
       setSent(true);
     } finally {
       setLoading(false);
@@ -68,6 +94,23 @@ export default function Login({ onSuccess }: LoginProps) {
                 className="bg-transparent border-none outline-none text-white text-sm w-full"
               />
             </div>
+            {showInvite && (
+              <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/10 rounded-[10px] px-3.5 py-2.5 mb-3.5">
+                <ArrowRight size={16} className="text-navy-500" />
+                <input
+                  type="text"
+                  value={inviteCode}
+                  onChange={e => setInviteCode(e.target.value)}
+                  placeholder="Invite code"
+                  className="bg-transparent border-none outline-none text-white text-sm w-full"
+                />
+              </div>
+            )}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/25 text-red-400 px-3 py-2 rounded-[10px] text-[13px] mb-3.5">
+                {error}
+              </div>
+            )}
             <button
               type="submit"
               disabled={loading || !email}
@@ -80,6 +123,15 @@ export default function Login({ onSuccess }: LoginProps) {
             >
               {loading ? "Sending…" : <>Send link <ArrowRight size={15} /></>}
             </button>
+            {!showInvite && (
+              <button
+                type="button"
+                onClick={() => setShowInvite(true)}
+                className="w-full bg-transparent border-none text-navy-500 text-xs mt-3 cursor-pointer hover:text-navy-300"
+              >
+                Have an invite code?
+              </button>
+            )}
           </form>
         )}
       </div>

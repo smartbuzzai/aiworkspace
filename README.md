@@ -15,13 +15,12 @@ A self-hosted, AI-managed workspace: CRM, email, unified inbox, calendar, projec
 | **Whisper** | Speech-to-text |
 | **Piper** | Text-to-speech |
 | **Radicale** | CalDAV / CardDAV server |
-| **n8n** | Workflow automation |
 | **Next.js** | Web app / PWA |
 | **Fastify API** | REST + SSE + WebSockets |
 | **BullMQ workers** | IMAP sync, embeddings, reminders, digest |
 | **Uptime Kuma + Dozzle** | Monitoring + log viewer |
 
-Total monthly cost: ~$10 for the VPS, ~$15 for the domain, $0 for everything else.
+Total monthly cost: ~€10 for the VPS, ~€1 for the domain, €0 for everything else.
 
 ## Repository layout
 
@@ -67,7 +66,6 @@ Point these A records at your VPS IP:
 ```
 app.yourdomain.com
 api.yourdomain.com
-n8n.yourdomain.com
 files.yourdomain.com
 dav.yourdomain.com
 status.yourdomain.com

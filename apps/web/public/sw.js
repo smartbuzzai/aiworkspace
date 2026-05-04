@@ -39,6 +39,11 @@ self.addEventListener("push", (e) => {
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const link = e.notification.data?.link || "/";
+  let link = e.notification.data?.link || "/";
+  // Prevent open redirect — only allow same-origin paths
+  try {
+    const url = new URL(link, self.location.origin);
+    if (url.origin !== self.location.origin) link = "/";
+  } catch { link = "/"; }
   e.waitUntil(clients.openWindow(link));
 });

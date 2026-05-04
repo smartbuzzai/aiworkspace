@@ -2,9 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 @layer base {
   body {
     @apply m-0 font-sans bg-navy-50 text-navy-800 antialiased;
+  }
+
+  .dark body,
+  body.dark-body {
+    @apply bg-navy-950 text-navy-200;
   }
 
   button,
@@ -14,3 +24,90 @@
     font-family: inherit;
   }
 }
+
+/* ── Dark mode overrides ─────────────────────────────────────── */
+/* These use CSS custom properties so all components adapt without
+   adding dark: prefixes to every single class. */
+
+.dark {
+  /* Surfaces */
+  --tw-bg-base: #0a0f1e;
+  --tw-bg-card: #111827;
+  --tw-bg-input: #1e293b;
+  --tw-border: #1e293b;
+}
+
+/* White cards → dark cards */
+.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+/* Light borders → dark borders */
+.dark .border-navy-200 {
+  border-color: #1e293b !important;
+}
+.dark .border-navy-100 {
+  border-color: #1e293b !important;
+}
+
+/* Light backgrounds → dark backgrounds */
+.dark .bg-navy-50 {
+  background-color: #0f172a !important;
+}
+.dark .bg-navy-100 {
+  background-color: #1e293b !important;
+}
+
+/* Text color adjustments */
+.dark .text-navy-900 {
+  color: #f1f5f9 !important;
+}
+.dark .text-navy-800 {
+  color: #e2e8f0 !important;
+}
+.dark .text-navy-700 {
+  color: #cbd5e1 !important;
+}
+.dark .text-navy-600 {
+  color: #94a3b8 !important;
+}
+.dark .text-navy-500 {
+  color: #64748b !important;
+}
+
+/* Header */
+.dark header.bg-white {
+  background-color: #0f172a !important;
+  border-color: #1e293b !important;
+}
+
+/* Inputs */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Modal backdrop */
+.dark .bg-\[rgba\(10\,15\,30\,0\.55\)\] {
+  background-color: rgba(0,0,0,0.7) !important;
+}
+
+/* Hover states */
+.dark .hover\:bg-navy-50:hover {
+  background-color: #1e293b !important;
+}
+.dark .hover\:bg-navy-100:hover {
+  background-color: #334155 !important;
+}
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar { width: 6px; }
+.dark ::-webkit-scrollbar-track { background: #0f172a; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }

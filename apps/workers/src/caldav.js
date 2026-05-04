@@ -6,9 +6,14 @@
 //  Events are VEVENT entries in iCalendar format.
 // ═══════════════════════════════════════════════════════════════
 
-import { v4 as uuidv4 } from "uuid";
-
 const CALDAV = process.env.CALDAV_HOST || "http://radicale:5232";
+const CALDAV_AUTH = process.env.CALDAV_USER && process.env.CALDAV_PASS
+  ? "Basic " + Buffer.from(`${process.env.CALDAV_USER}:${process.env.CALDAV_PASS}`).toString("base64")
+  : null;
+
+function authHeaders(extra = {}) {
+  return CALDAV_AUTH ? { ...extra, Authorization: CALDAV_AUTH } : extra;
+}
 
 // ─── iCalendar serialization ──────────────────────────────────
 function toICSDate(d) {
@@ -65,7 +70,7 @@ async function ensureCollection(userId) {
 </create>`;
   await fetch(`${CALDAV}${path}`, {
     method: "MKCOL",
-    headers: { "Content-Type": "application/xml" },
+    headers: authHeaders({ "Content-Type": "application/xml" }),
     body
   }).catch(() => {}); // 405 if already exists — ignore
 }
@@ -78,7 +83,7 @@ export async function pushEvent(userId, event) {
   const path = `/${userId}/default/${uid}.ics`;
   const r = await fetch(`${CALDAV}${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "text/calendar; charset=utf-8" },
+    headers: authHeaders({ "Content-Type": "text/calendar; charset=utf-8" }),
     body: ics
   });
   if (!r.ok && r.status !== 201 && r.status !== 204) {
@@ -89,7 +94,7 @@ export async function pushEvent(userId, event) {
 
 export async function deleteEvent(userId, caldavUid) {
   const path = `/${userId}/default/${caldavUid}.ics`;
-  await fetch(`${CALDAV}${path}`, { method: "DELETE" }).catch(() => {});
+  await fetch(`${CALDAV}${path}`, { method: "DELETE", headers: authHeaders() }).catch(() => {});
 }
 
 // ─── Pull events from CalDAV into Postgres ────────────────────
@@ -105,7 +110,7 @@ export async function pullEvents(userId, db) {
 
   const listRes = await fetch(`${CALDAV}${path}`, {
     method: "PROPFIND",
-    headers: { "Content-Type": "application/xml", "Depth": "1" },
+    headers: authHeaders({ "Content-Type": "application/xml", "Depth": "1" }),
     body: propfindBody
   });
   if (!listRes.ok) return 0;
@@ -115,29 +120,26 @@ export async function pullEvents(userId, db) {
   const hrefs = [...xml.matchAll(/<(?:\w+:)?href[^>]*>([^<]+\.ics)<\/(?:\w+:)?href>/g)]
     .map(m => m[1]);
 
-  let synced = 0;
-  for (const href of hrefs) {
-    try {
-      const res = await fetch(`${CALDAV}${href}`);
-      if (!res.ok) continue;
-      const ics = await res.text();
-      const parsed = parseVEVENT(ics);
-      if (!parsed) continue;
+  const results = await Promise.allSettled(hrefs.map(async (href) => {
+    const res = await fetch(`${CALDAV}${href}`, { headers: authHeaders() });
+    if (!res.ok) return false;
+    const parsed = parseVEVENT(await res.text());
+    if (!parsed) return false;
+    await db.query(
+      `INSERT INTO events
+         (user_id, title, description, location, starts_at, ends_at, caldav_uid)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT DO NOTHING`,
+      [userId, parsed.summary, parsed.description, parsed.location,
+       parsed.dtstart, parsed.dtend, parsed.uid]
+    );
+    return true;
+  }));
 
-      await db.query(
-        `INSERT INTO events
-           (user_id, title, description, location, starts_at, ends_at, caldav_uid)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
-         ON CONFLICT DO NOTHING`,
-        [userId, parsed.summary, parsed.description, parsed.location,
-         parsed.dtstart, parsed.dtend, parsed.uid]
-      );
-      synced++;
-    } catch (err) {
-      console.warn("caldav pull item failed:", err.message);
-    }
+  for (const r of results) {
+    if (r.status === "rejected") console.warn("caldav pull item failed:", r.reason?.message);
   }
-  return synced;
+  return results.filter(r => r.status === "fulfilled" && r.value).length;
 }
 
 // ─── Minimal VEVENT parser (no external deps for tiny footprint) ───
