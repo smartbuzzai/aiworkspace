@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, Clock, MapPin } from "lucide-react";
+import { useEffect, useState, useRef, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Plus, X, Clock, MapPin, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
 
-// ─── TypeScript Interfaces ──────────────────────────────────
+// ─── Interfaces ──────────────────────────────────────────────
 interface CalendarEvent {
   id: string;
   title: string;
@@ -18,6 +18,7 @@ interface MonthGridProps {
   cursor: Date;
   events: CalendarEvent[];
   onSelect: (event: CalendarEvent) => void;
+  onClickDay: (date: Date) => void;
 }
 
 interface WeekGridProps {
@@ -30,12 +31,14 @@ interface WeekGridProps {
 interface EventModalProps {
   onClose: () => void;
   onSaved: () => void;
+  initialDate?: Date;
 }
 
 interface EventDetailProps {
   event: CalendarEvent;
   onClose: () => void;
   onDelete: () => void | Promise<void>;
+  onSaved: () => void;
 }
 
 interface NavBtnProps {
@@ -43,17 +46,29 @@ interface NavBtnProps {
   onClick: () => void;
 }
 
-// ─── Type Color Map (Tailwind classes) ──────────────────────
+interface EventFormState {
+  title: string;
+  location: string;
+  event_type: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  description: string;
+}
+
+// ─── Type Color Map ──────────────────────────────────────────
 const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   meeting:  { bg: "bg-blue-500/[0.12]",    text: "text-blue-600",   border: "border-l-blue-500/30" },
   call:     { bg: "bg-violet-500/[0.12]",   text: "text-violet-600", border: "border-l-violet-500/30" },
-  focus:    { bg: "bg-emerald-500/[0.12]",   text: "text-emerald-600", border: "border-l-emerald-500/30" },
-  task:     { bg: "bg-amber-500/[0.12]",     text: "text-amber-600",  border: "border-l-amber-500/30" },
-  personal: { bg: "bg-pink-500/[0.12]",      text: "text-pink-600",   border: "border-l-pink-500/30" },
+  focus:    { bg: "bg-emerald-500/[0.12]",  text: "text-emerald-600", border: "border-l-emerald-500/30" },
+  task:     { bg: "bg-amber-500/[0.12]",    text: "text-amber-600",  border: "border-l-amber-500/30" },
+  personal: { bg: "bg-pink-500/[0.12]",     text: "text-pink-600",   border: "border-l-pink-500/30" },
 };
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+
+function pad2(n: number): string { return String(n).padStart(2, "0"); }
 
 function startOfWeek(d: Date): Date {
   const s = new Date(d);
@@ -63,18 +78,36 @@ function startOfWeek(d: Date): Date {
 }
 
 function sameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
+  return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+    a.getDate() === b.getDate();
 }
 
+function dateToInputValue(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function eventToFormState(event: CalendarEvent): EventFormState {
+  const start = new Date(event.starts_at);
+  const end = new Date(event.ends_at);
+  return {
+    title: event.title,
+    location: event.location || "",
+    event_type: event.event_type,
+    date: dateToInputValue(start),
+    start_time: `${pad2(start.getHours())}:${pad2(start.getMinutes())}`,
+    end_time: `${pad2(end.getHours())}:${pad2(end.getMinutes())}`,
+    description: event.description || "",
+  };
+}
+
+// ─── Main View ───────────────────────────────────────────────
 export default function CalendarView() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [cursor, setCursor] = useState<Date>(new Date());
   const [creating, setCreating] = useState<boolean>(false);
+  const [prefillDate, setPrefillDate] = useState<Date | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
@@ -85,9 +118,7 @@ export default function CalendarView() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  useEffect(() => {
-    loadEvents();
-  }, [cursor, viewMode]);
+  useEffect(() => { loadEvents(); }, [cursor, viewMode]);
 
   async function loadEvents(): Promise<void> {
     let from: Date, to: Date;
@@ -120,10 +151,6 @@ export default function CalendarView() {
     setCursor(d);
   }
 
-  function goToday(): void {
-    setCursor(new Date());
-  }
-
   const title =
     viewMode === "month"
       ? cursor.toLocaleDateString("en-US", { month: "long", year: "numeric" })
@@ -139,18 +166,14 @@ export default function CalendarView() {
       {/* Toolbar */}
       <div className="flex items-center gap-2.5 flex-wrap">
         <div className="flex gap-1">
-          <NavBtn onClick={() => navigate(-1)}>
-            <ChevronLeft size={16} />
-          </NavBtn>
+          <NavBtn onClick={() => navigate(-1)}><ChevronLeft size={16} /></NavBtn>
           <button
-            onClick={goToday}
+            onClick={() => setCursor(new Date())}
             className="px-3.5 py-[7px] rounded-lg text-xs font-semibold bg-white border border-navy-200 text-navy-700 cursor-pointer font-sans"
           >
             Today
           </button>
-          <NavBtn onClick={() => navigate(1)}>
-            <ChevronRight size={16} />
-          </NavBtn>
+          <NavBtn onClick={() => navigate(1)}><ChevronRight size={16} /></NavBtn>
         </div>
         <h2 className="text-lg font-bold text-navy-900 m-0 flex-1">{title}</h2>
         <div className="flex gap-1">
@@ -170,7 +193,7 @@ export default function CalendarView() {
           ))}
         </div>
         <button
-          onClick={() => setCreating(true)}
+          onClick={() => { setPrefillDate(null); setCreating(true); }}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer font-sans"
         >
           <Plus size={14} /> New Event
@@ -179,32 +202,31 @@ export default function CalendarView() {
 
       {/* Grid */}
       {viewMode === "month" ? (
-        <MonthGrid cursor={cursor} events={events} onSelect={setSelectedEvent} />
+        <MonthGrid
+          cursor={cursor}
+          events={events}
+          onSelect={setSelectedEvent}
+          onClickDay={(date) => { setPrefillDate(date); setCreating(true); }}
+        />
       ) : (
         <WeekGrid cursor={cursor} events={events} onSelect={setSelectedEvent} isMobile={isMobile} />
       )}
 
-      {/* Create modal */}
       {creating && (
         <EventModal
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            loadEvents();
-          }}
+          initialDate={prefillDate ?? undefined}
+          onClose={() => { setCreating(false); setPrefillDate(null); }}
+          onSaved={() => { setCreating(false); setPrefillDate(null); loadEvents(); }}
         />
       )}
 
-      {/* Event detail popup */}
       {selectedEvent && (
         <EventDetail
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
+          onSaved={() => { setSelectedEvent(null); loadEvents(); }}
           onDelete={async () => {
-            await fetch(`/api/events/${selectedEvent.id}`, {
-              method: "DELETE",
-              credentials: "include",
-            });
+            await fetch(`/api/events/${selectedEvent.id}`, { method: "DELETE", credentials: "include" });
             setSelectedEvent(null);
             loadEvents();
           }}
@@ -215,7 +237,7 @@ export default function CalendarView() {
 }
 
 // ─── Month Grid ──────────────────────────────────────────────
-function MonthGrid({ cursor, events, onSelect }: MonthGridProps) {
+function MonthGrid({ cursor, events, onSelect, onClickDay }: MonthGridProps) {
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const firstDay = new Date(year, month, 1);
@@ -238,46 +260,36 @@ function MonthGrid({ cursor, events, onSelect }: MonthGridProps) {
 
   return (
     <div className="bg-white border border-navy-200 rounded-[14px] overflow-hidden">
-      {/* Day headers */}
       <div className="grid grid-cols-7 border-b border-navy-200">
-        {DAYS.map((d) => (
-          <div
-            key={d}
-            className="px-2 py-2.5 text-center text-[11px] font-bold text-navy-500 uppercase tracking-wider"
-          >
-            {d}
+        {DAYS.map((day) => (
+          <div key={day} className="px-2 py-2.5 text-center text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+            {day}
           </div>
         ))}
       </div>
 
-      {/* Weeks */}
       {weeks.map((week, wi) => (
         <div key={wi} className="grid grid-cols-7 min-h-[100px]">
           {week.map((day, di) => {
             const isToday = sameDay(day, today);
             const isOtherMonth = day.getMonth() !== month;
-            const dayEvents = events.filter((e) =>
-              sameDay(new Date(e.starts_at), day)
-            );
+            const dayEvents = events.filter((e) => sameDay(new Date(e.starts_at), day));
             return (
               <div
                 key={di}
+                onClick={() => onClickDay(day)}
                 className={cn(
-                  "p-1.5 min-h-[90px]",
+                  "p-1.5 min-h-[90px] cursor-pointer hover:bg-navy-50/60 transition-colors",
                   di < 6 && "border-r border-navy-100",
                   wi < weeks.length - 1 && "border-b border-navy-100",
                   isToday && "bg-blue-500/[0.03]",
                   isOtherMonth && "opacity-40"
                 )}
               >
-                <div
-                  className={cn(
-                    "w-[26px] h-[26px] rounded-full flex items-center justify-center text-xs mb-1",
-                    isToday
-                      ? "font-bold text-white bg-blue-600"
-                      : "font-medium text-navy-700 bg-transparent"
-                  )}
-                >
+                <div className={cn(
+                  "w-[26px] h-[26px] rounded-full flex items-center justify-center text-xs mb-1",
+                  isToday ? "font-bold text-white bg-blue-600" : "font-medium text-navy-700"
+                )}>
                   {day.getDate()}
                 </div>
                 {dayEvents.slice(0, 3).map((e) => {
@@ -285,26 +297,19 @@ function MonthGrid({ cursor, events, onSelect }: MonthGridProps) {
                   return (
                     <div
                       key={e.id}
-                      onClick={() => onSelect(e)}
+                      onClick={(ev) => { ev.stopPropagation(); onSelect(e); }}
                       className={cn(
                         "text-[11px] px-1.5 py-0.5 rounded mb-0.5 border-l-2 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap font-medium",
-                        c.bg,
-                        c.text,
-                        c.border
+                        c.bg, c.text, c.border
                       )}
                     >
-                      {new Date(e.starts_at).toLocaleTimeString("en-US", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}{" "}
+                      {new Date(e.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}{" "}
                       {e.title}
                     </div>
                   );
                 })}
                 {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-navy-500 pl-1.5">
-                    +{dayEvents.length - 3} more
-                  </div>
+                  <div className="text-[10px] text-navy-500 pl-1.5">+{dayEvents.length - 3} more</div>
                 )}
               </div>
             );
@@ -324,50 +329,39 @@ function WeekGrid({ cursor, events, onSelect, isMobile }: WeekGridProps) {
     return d;
   });
   const today = new Date();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to current hour on mount
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const hour = new Date().getHours();
+    const clampedHour = Math.max(6, Math.min(22, hour));
+    const rowIndex = clampedHour - 6;
+    scrollRef.current.scrollTop = Math.max(0, rowIndex * 48 - 96);
+  }, []);
 
   return (
     <div className="bg-white border border-navy-200 rounded-[14px] overflow-hidden">
-      {/* Day headers */}
-      <div
-        className="grid border-b border-navy-200"
-        style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}
-      >
+      <div className="grid border-b border-navy-200" style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}>
         <div />
         {days.map((d, i) => (
           <div key={i} className="px-1 py-2.5 text-center border-l border-navy-100">
-            <div className="text-[11px] font-semibold text-navy-500">
-              {DAYS[d.getDay()]}
-            </div>
-            <div
-              className={cn(
-                "w-7 h-7 rounded-full mx-auto mt-1 flex items-center justify-center text-sm font-bold",
-                sameDay(d, today)
-                  ? "bg-blue-600 text-white"
-                  : "bg-transparent text-navy-900"
-              )}
-            >
+            <div className="text-[11px] font-semibold text-navy-500">{DAYS[d.getDay()]}</div>
+            <div className={cn(
+              "w-7 h-7 rounded-full mx-auto mt-1 flex items-center justify-center text-sm font-bold",
+              sameDay(d, today) ? "bg-blue-600 text-white" : "bg-transparent text-navy-900"
+            )}>
               {d.getDate()}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Hour rows */}
-      <div className="max-h-[600px] overflow-y-auto">
+      <div ref={scrollRef} className="max-h-[600px] overflow-y-auto">
         {HOURS.filter((h) => h >= 6 && h <= 22).map((hour) => (
-          <div
-            key={hour}
-            className="grid min-h-[48px] border-b border-navy-100"
-            style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}
-          >
+          <div key={hour} className="grid min-h-[48px] border-b border-navy-100" style={{ gridTemplateColumns: "50px repeat(7, 1fr)" }}>
             <div className="text-[10px] text-navy-500 p-1 pr-2 font-mono text-right">
-              {hour === 0
-                ? "12 AM"
-                : hour < 12
-                  ? `${hour} AM`
-                  : hour === 12
-                    ? "12 PM"
-                    : `${hour - 12} PM`}
+              {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
             </div>
             {days.map((day, di) => {
               const slotEvents = events.filter((e) => {
@@ -378,28 +372,21 @@ function WeekGrid({ cursor, events, onSelect, isMobile }: WeekGridProps) {
                 <div key={di} className="border-l border-navy-100 p-0.5 relative">
                   {slotEvents.map((e) => {
                     const c = TYPE_COLORS[e.event_type] || TYPE_COLORS.meeting;
-                    const duration =
-                      (new Date(e.ends_at).getTime() - new Date(e.starts_at).getTime()) /
-                      3600000;
+                    const duration = (new Date(e.ends_at).getTime() - new Date(e.starts_at).getTime()) / 3600000;
                     return (
                       <div
                         key={e.id}
                         onClick={() => onSelect(e)}
                         className={cn(
                           "text-[11px] px-1.5 py-[3px] rounded-[5px] border-l-[3px] cursor-pointer font-medium overflow-hidden leading-snug",
-                          c.bg,
-                          c.text,
-                          c.border
+                          c.bg, c.text, c.border
                         )}
                         style={{ minHeight: Math.max(22, duration * 44) }}
                       >
                         <div className="font-semibold">{e.title}</div>
                         {!isMobile && (
                           <div className="text-[10px] opacity-80">
-                            {new Date(e.starts_at).toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
+                            {new Date(e.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                           </div>
                         )}
                       </div>
@@ -415,30 +402,148 @@ function WeekGrid({ cursor, events, onSelect, isMobile }: WeekGridProps) {
   );
 }
 
-// ─── Event Create Modal ──────────────────────────────────────
-interface EventFormState {
-  title: string;
-  location: string;
-  event_type: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  description: string;
+// ─── Shared form fields ──────────────────────────────────────
+function FormField({
+  label, value, onChange, type = "text", autoFocus = false, onKeyDown,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  type?: string; autoFocus?: boolean; onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
+}) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-semibold text-navy-700 mb-1">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        autoFocus={autoFocus}
+        className="w-full px-3 py-[9px] rounded-lg text-[13px] border border-navy-200 outline-none font-sans text-navy-900 box-border"
+      />
+    </div>
+  );
 }
 
-function EventModal({ onClose, onSaved }: EventModalProps) {
+function TypePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="mb-3">
+      <label className="block text-xs font-semibold text-navy-700 mb-1">Type</label>
+      <div className="flex gap-1.5 flex-wrap">
+        {Object.keys(TYPE_COLORS).map((t) => {
+          const tc = TYPE_COLORS[t];
+          return (
+            <button
+              key={t}
+              onClick={() => onChange(t)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer font-sans capitalize border",
+                value === t ? cn(tc.bg, tc.text, "border-current") : "bg-navy-50 text-navy-500 border-navy-200"
+              )}
+            >
+              {t}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function EventForm({
+  form,
+  setForm,
+  onSave,
+  onCancel,
+  saving,
+  saveLabel,
+  heading,
+}: {
+  form: EventFormState;
+  setForm: React.Dispatch<React.SetStateAction<EventFormState>>;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  saveLabel: string;
+  heading: string;
+}) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]"
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl p-6 w-[420px] max-w-[95vw] max-h-[90vh] overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.2)]"
+      >
+        <div className="flex justify-between mb-5">
+          <h3 className="m-0 text-lg font-bold text-navy-900">{heading}</h3>
+          <button onClick={onCancel} className="bg-transparent border-none cursor-pointer text-navy-500 p-1">
+            <X size={18} />
+          </button>
+        </div>
+
+        <FormField
+          label="Title"
+          value={form.title}
+          onChange={(v) => setForm((f) => ({ ...f, title: v }))}
+          autoFocus
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onSave(); } }}
+        />
+        <FormField label="Location" value={form.location} onChange={(v) => setForm((f) => ({ ...f, location: v }))} />
+        <FormField label="Date" value={form.date} onChange={(v) => setForm((f) => ({ ...f, date: v }))} type="date" />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Start" value={form.start_time} onChange={(v) => setForm((f) => ({ ...f, start_time: v }))} type="time" />
+          <FormField label="End" value={form.end_time} onChange={(v) => setForm((f) => ({ ...f, end_time: v }))} type="time" />
+        </div>
+        <TypePicker value={form.event_type} onChange={(v) => setForm((f) => ({ ...f, event_type: v }))} />
+        <div className="mb-4">
+          <label className="block text-xs font-semibold text-navy-700 mb-1">Notes</label>
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            rows={3}
+            className="w-full px-3 py-[9px] rounded-lg text-[13px] border border-navy-200 outline-none resize-y font-sans text-navy-900 box-border"
+          />
+        </div>
+
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-4 py-[9px] rounded-lg text-[13px] font-semibold bg-transparent border border-navy-200 text-navy-700 cursor-pointer font-sans"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving || !form.title.trim()}
+            className={cn(
+              "px-[18px] py-[9px] rounded-lg text-[13px] font-semibold bg-blue-600 text-white border-none cursor-pointer font-sans",
+              (saving || !form.title.trim()) && "opacity-50"
+            )}
+          >
+            {saving ? "Saving…" : saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Event Create Modal ──────────────────────────────────────
+function EventModal({ onClose, onSaved, initialDate }: EventModalProps) {
+  const defaultDate = initialDate ? dateToInputValue(initialDate) : new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<EventFormState>({
     title: "",
     location: "",
     event_type: "meeting",
-    date: new Date().toISOString().slice(0, 10),
+    date: defaultDate,
     start_time: "09:00",
     end_time: "10:00",
     description: "",
   });
-  const [saving, setSaving] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
 
-  async function handleSave(): Promise<void> {
+  async function handleSave() {
     if (!form.title.trim() || saving) return;
     setSaving(true);
     try {
@@ -463,112 +568,65 @@ function EventModal({ onClose, onSaved }: EventModalProps) {
     }
   }
 
-  const field = (
-    label: string,
-    key: keyof EventFormState,
-    type: string = "text"
-  ) => (
-    <div className="mb-3">
-      <label className="block text-xs font-semibold text-navy-700 mb-1">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={form[key]}
-        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        className="w-full px-3 py-[9px] rounded-lg text-[13px] border border-navy-200 outline-none font-sans text-navy-900 box-border"
-      />
-    </div>
-  );
-
   return (
-    <div
-      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl p-6 w-[420px] max-w-[95vw] max-h-[90vh] overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.2)]"
-      >
-        <div className="flex justify-between mb-5">
-          <h3 className="m-0 text-lg font-bold text-navy-900">New Event</h3>
-          <button
-            onClick={onClose}
-            className="bg-transparent border-none cursor-pointer text-navy-500 p-1"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        {field("Title", "title")}
-        {field("Location", "location")}
-        {field("Date", "date", "date")}
-        <div className="grid grid-cols-2 gap-3">
-          {field("Start", "start_time", "time")}
-          {field("End", "end_time", "time")}
-        </div>
-        <div className="mb-3">
-          <label className="block text-xs font-semibold text-navy-700 mb-1">
-            Type
-          </label>
-          <div className="flex gap-1.5 flex-wrap">
-            {Object.keys(TYPE_COLORS).map((t) => {
-              const tc = TYPE_COLORS[t];
-              return (
-                <button
-                  key={t}
-                  onClick={() => setForm((f) => ({ ...f, event_type: t }))}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer font-sans capitalize border",
-                    form.event_type === t
-                      ? cn(tc.bg, tc.text, "border-current")
-                      : "bg-navy-50 text-navy-500 border-navy-200"
-                  )}
-                >
-                  {t}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mb-4">
-          <label className="block text-xs font-semibold text-navy-700 mb-1">
-            Notes
-          </label>
-          <textarea
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            rows={3}
-            className="w-full px-3 py-[9px] rounded-lg text-[13px] border border-navy-200 outline-none resize-y font-sans text-navy-900 box-border"
-          />
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-[9px] rounded-lg text-[13px] font-semibold bg-transparent border border-navy-200 text-navy-700 cursor-pointer font-sans"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !form.title.trim()}
-            className={cn(
-              "px-[18px] py-[9px] rounded-lg text-[13px] font-semibold bg-blue-600 text-white border-none cursor-pointer font-sans",
-              (saving || !form.title.trim()) && "opacity-50"
-            )}
-          >
-            {saving ? "Saving\u2026" : "Create Event"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <EventForm
+      heading="New Event"
+      saveLabel="Create Event"
+      form={form}
+      setForm={setForm}
+      onSave={handleSave}
+      onCancel={onClose}
+      saving={saving}
+    />
   );
 }
 
-// ─── Event Detail Popup ──────────────────────────────────────
-function EventDetail({ event, onClose, onDelete }: EventDetailProps) {
+// ─── Event Detail + Edit ─────────────────────────────────────
+function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
   const c = TYPE_COLORS[event.event_type] || TYPE_COLORS.meeting;
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<EventFormState>(() => eventToFormState(event));
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.title.trim() || saving) return;
+    setSaving(true);
+    try {
+      const starts_at = new Date(`${form.date}T${form.start_time}:00`).toISOString();
+      const ends_at = new Date(`${form.date}T${form.end_time}:00`).toISOString();
+      await fetch(`/api/events/${event.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          location: form.location || null,
+          description: form.description || null,
+          event_type: form.event_type,
+          starts_at,
+          ends_at,
+        }),
+      });
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <EventForm
+        heading="Edit Event"
+        saveLabel="Save Changes"
+        form={form}
+        setForm={setForm}
+        onSave={handleSave}
+        onCancel={() => setEditing(false)}
+        saving={saving}
+      />
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100]"
@@ -579,37 +637,34 @@ function EventDetail({ event, onClose, onDelete }: EventDetailProps) {
         className="bg-white rounded-2xl p-6 w-[380px] max-w-[95vw] shadow-[0_20px_60px_rgba(0,0,0,0.2)]"
       >
         <div className="flex justify-between mb-4">
-          <span
-            className={cn(
-              "px-2.5 py-1 rounded-md text-[11px] font-semibold capitalize",
-              c.bg,
-              c.text
-            )}
-          >
+          <span className={cn("px-2.5 py-1 rounded-md text-[11px] font-semibold capitalize", c.bg, c.text)}>
             {event.event_type}
           </span>
-          <button
-            onClick={onClose}
-            className="bg-transparent border-none cursor-pointer text-navy-500"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setEditing(true)}
+              className="bg-transparent border-none cursor-pointer text-navy-400 hover:text-navy-700 p-1 rounded-lg transition-colors"
+              title="Edit event"
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-transparent border-none cursor-pointer text-navy-500 p-1"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
         <h3 className="m-0 mb-3 text-lg font-bold text-navy-900">{event.title}</h3>
         <div className="flex items-center gap-2 text-[13px] text-navy-700 mb-2">
           <Clock size={14} className="text-navy-500" />
           {new Date(event.starts_at).toLocaleString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
+            weekday: "short", month: "short", day: "numeric",
+            hour: "numeric", minute: "2-digit",
           })}
           {" – "}
-          {new Date(event.ends_at).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })}
+          {new Date(event.ends_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
         </div>
         {event.location && (
           <div className="flex items-center gap-2 text-[13px] text-navy-700 mb-2">
@@ -618,9 +673,7 @@ function EventDetail({ event, onClose, onDelete }: EventDetailProps) {
           </div>
         )}
         {event.description && (
-          <p className="text-[13px] text-navy-700 leading-relaxed my-3">
-            {event.description}
-          </p>
+          <p className="text-[13px] text-navy-700 leading-relaxed my-3">{event.description}</p>
         )}
         <div className="flex gap-2 justify-end mt-4">
           <button
