@@ -380,12 +380,17 @@ function TaskModal({ task, projects, onClose, onSaved }: TaskModalProps) {
         project_id: f.project_id || null,
         tags: f.tags ? f.tags.split(",").map(s => s.trim()).filter(Boolean) : [],
       };
-      await fetch(isEdit ? `/api/tasks/${task!.id}` : "/api/tasks", {
+      const r = await fetch(isEdit ? `/api/tasks/${task!.id}` : "/api/tasks", {
         method: isEdit ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to save task.");
+        return;
+      }
       toast("success", isEdit ? "Task saved." : "Task created.");
       onSaved();
     } finally {

@@ -116,11 +116,13 @@ function AccountSection({ user }: SettingsProps) {
 
 // ─── Email accounts ──────────────────────────────────────────
 function EmailAccountsSection() {
+  const { toast } = useToast();
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [showAdd, setShowAdd] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState<string>("");
+  const [savingLabel, setSavingLabel] = useState<boolean>(false);
 
   async function refresh() {
     setLoading(true);
@@ -148,15 +150,24 @@ function EmailAccountsSection() {
   }
 
   async function saveLabel(id: string) {
-    if (!editLabel.trim()) return;
-    await fetch(`/api/accounts/${id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label: editLabel.trim() }),
-    });
-    setEditingId(null);
-    refresh();
+    if (!editLabel.trim() || savingLabel) return;
+    setSavingLabel(true);
+    try {
+      const r = await fetch(`/api/accounts/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: editLabel.trim() }),
+      });
+      if (!r.ok) {
+        toast("error", "Failed to save label.");
+        return;
+      }
+      setEditingId(null);
+      refresh();
+    } finally {
+      setSavingLabel(false);
+    }
   }
 
   return (
@@ -189,14 +200,15 @@ function EmailAccountsSection() {
                     <input
                       autoFocus
                       value={editLabel}
+                      disabled={savingLabel}
                       onChange={e => setEditLabel(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") saveLabel(a.id); if (e.key === "Escape") setEditingId(null); }}
-                      className="px-2 py-1 text-sm font-semibold border border-blue-400 rounded-lg outline-none font-[inherit] text-navy-900 bg-white"
+                      className="px-2 py-1 text-sm font-semibold border border-blue-400 rounded-lg outline-none font-[inherit] text-navy-900 bg-white disabled:opacity-60"
                     />
-                    <button onClick={() => saveLabel(a.id)} className="bg-transparent border-none p-1 text-green-500 cursor-pointer">
+                    <button onClick={() => saveLabel(a.id)} disabled={savingLabel} className="bg-transparent border-none p-1 text-green-500 cursor-pointer disabled:opacity-40">
                       <CheckCircle2 size={14} />
                     </button>
-                    <button onClick={() => setEditingId(null)} className="bg-transparent border-none p-1 text-navy-400 cursor-pointer">
+                    <button onClick={() => setEditingId(null)} disabled={savingLabel} className="bg-transparent border-none p-1 text-navy-400 cursor-pointer disabled:opacity-40">
                       <X size={14} />
                     </button>
                   </div>

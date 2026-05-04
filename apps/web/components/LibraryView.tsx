@@ -243,31 +243,50 @@ export default function LibraryView() {
   async function createFolder() {
     const name = newFolderName.trim();
     if (!name) return;
-    await fetch("/api/files/folders", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, parent_id: currentFolder?.id || null }),
-    });
-    setNewFolderName("");
-    setShowNewFolder(false);
-    load();
+    try {
+      const r = await fetch("/api/files/folders", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, parent_id: currentFolder?.id || null }),
+      });
+      if (!r.ok) {
+        toast("error", "Failed to create folder.");
+        return;
+      }
+      setNewFolderName("");
+      setShowNewFolder(false);
+      load();
+    } catch {
+      toast("error", "Failed to create folder.");
+    }
   }
 
   async function deleteFolder(folderId: string) {
     if (!confirm("Delete this folder? Files inside will be moved to the root.")) return;
-    await fetch(`/api/files/folders/${folderId}`, { method: "DELETE", credentials: "include" });
-    load();
+    try {
+      const r = await fetch(`/api/files/folders/${folderId}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error();
+      load();
+    } catch {
+      toast("error", "Failed to delete folder.");
+    }
   }
 
   async function renameFolder(folderId: string, name: string) {
-    await fetch(`/api/files/folders/${folderId}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    load();
+    try {
+      const r = await fetch(`/api/files/folders/${folderId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!r.ok) throw new Error();
+      load();
+    } catch {
+      toast("error", "Failed to rename folder.");
+      load();
+    }
   }
 
   function handleDragEnter(e: React.DragEvent) {
