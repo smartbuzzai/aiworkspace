@@ -252,6 +252,18 @@ export default async function filesRoutes(app) {
     return { ok: true };
   });
 
+  // PATCH /folders/:folderId — rename a folder
+  app.patch("/folders/:folderId", async (req, reply) => {
+    const schema = z.object({ name: z.string().min(1).max(255) });
+    const { name } = schema.parse(req.body);
+    const { rows } = await query(
+      `UPDATE folders SET name = $1 WHERE id = $2 AND user_id = $3 RETURNING *`,
+      [name.trim(), req.params.folderId, req.user.user_id]
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Folder not found" });
+    return { folder: rows[0] };
+  });
+
   // DELETE /folders/:folderId — delete a folder
   app.delete("/folders/:folderId", async (req, reply) => {
     const { rows } = await query(

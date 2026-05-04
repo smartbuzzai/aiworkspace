@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import {
   Search, Upload, X, Trash2, Download, FileText, Image, Music,
   Video, File, Table2, Presentation, BookOpen,
-  FolderOpen, FolderPlus, ChevronRight, PenLine,
+  FolderOpen, FolderPlus, ChevronRight, PenLine, Pencil, Check,
 } from "lucide-react";
 import DocumentEditor from "./shared/DocumentEditor";
 import { cn } from "../lib/cn";
@@ -254,6 +254,16 @@ export default function LibraryView() {
     load();
   }
 
+  async function renameFolder(folderId: string, name: string) {
+    await fetch(`/api/files/folders/${folderId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    load();
+  }
+
   function handleDragEnter(e: React.DragEvent) {
     e.preventDefault();
     dragCounter.current++;
@@ -460,6 +470,7 @@ export default function LibraryView() {
               folder={folder}
               onClick={() => navigateToFolder(folder)}
               onDelete={() => deleteFolder(folder.id)}
+              onRename={(name) => renameFolder(folder.id, name)}
             />
           ))}
           {filteredFiles.map(f => (
@@ -576,8 +587,8 @@ export default function LibraryView() {
           folderId={editingDoc === "new" ? (currentFolder?.id ?? null) : editingDoc.folder_id}
           initialTitle={editingDoc === "new" ? undefined : editingDoc.title}
           onClose={() => setEditingDoc(null)}
-          onSaved={() => { setEditingDoc(null); load(); }}
-          onDeleted={() => load()}
+          onSaved={() => load()}
+          onDeleted={() => { setEditingDoc(null); load(); }}
         />
       )}
     </div>
@@ -588,17 +599,57 @@ export default function LibraryView() {
 /*  FolderCard                                                         */
 /* ------------------------------------------------------------------ */
 
-function FolderCard({ folder, onClick, onDelete }: { folder: FolderItem; onClick: () => void; onDelete: () => void }) {
+function FolderCard({
+  folder, onClick, onDelete, onRename,
+}: {
+  folder: FolderItem; onClick: () => void; onDelete: () => void; onRename: (name: string) => void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(folder.name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startRename(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDraftName(folder.name);
+    setRenaming(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  }
+
+  function commitRename(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    const name = draftName.trim();
+    if (name && name !== folder.name) onRename(name);
+    setRenaming(false);
+  }
+
   return (
     <div
-      onClick={onClick}
-      className="bg-white border border-navy-200 rounded-[14px] p-4 flex gap-3.5 group transition-all hover:border-blue-400 hover:-translate-y-px cursor-pointer"
+      onClick={renaming ? undefined : onClick}
+      className={cn(
+        "bg-white border border-navy-200 rounded-[14px] p-4 flex gap-3.5 group transition-all hover:border-blue-400 hover:-translate-y-px",
+        renaming ? "cursor-default" : "cursor-pointer"
+      )}
     >
       <div className="w-[46px] h-[46px] rounded-xl flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-600">
         <FolderOpen size={20} />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-navy-900 truncate">{folder.name}</div>
+        {renaming ? (
+          <input
+            ref={inputRef}
+            value={draftName}
+            autoFocus
+            onChange={e => setDraftName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") { e.preventDefault(); commitRename(); }
+              if (e.key === "Escape") { setRenaming(false); }
+            }}
+            onClick={e => e.stopPropagation()}
+            className="w-full text-sm font-semibold text-navy-900 border border-blue-400 rounded-md px-1.5 py-0.5 outline-none font-[inherit] bg-white"
+          />
+        ) : (
+          <div className="text-sm font-semibold text-navy-900 truncate">{folder.name}</div>
+        )}
         <div className="text-[11px] text-navy-500 mt-0.5 flex items-center gap-2">
           <span className="uppercase font-bold">Folder</span>
           <span>&middot;</span>
@@ -606,6 +657,23 @@ function FolderCard({ folder, onClick, onDelete }: { folder: FolderItem; onClick
         </div>
       </div>
       <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {renaming ? (
+          <button
+            onClick={commitRename}
+            className="bg-transparent border-none cursor-pointer p-1.5 text-blue-500 rounded-lg hover:text-blue-700"
+            title="Save rename"
+          >
+            <Check size={14} />
+          </button>
+        ) : (
+          <button
+            onClick={startRename}
+            className="bg-transparent border-none cursor-pointer p-1.5 text-navy-400 rounded-lg hover:text-navy-700"
+            title="Rename folder"
+          >
+            <Pencil size={14} />
+          </button>
+        )}
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
           className="bg-transparent border-none cursor-pointer p-1.5 text-navy-400 rounded-lg hover:text-red-500"
