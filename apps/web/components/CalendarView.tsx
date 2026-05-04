@@ -26,6 +26,7 @@ interface WeekGridProps {
   cursor: Date;
   events: CalendarEvent[];
   onSelect: (event: CalendarEvent) => void;
+  onClickSlot?: (date: Date) => void;
   isMobile: boolean;
 }
 
@@ -210,7 +211,13 @@ export default function CalendarView() {
           onClickDay={(date) => { setPrefillDate(date); setCreating(true); }}
         />
       ) : (
-        <WeekGrid cursor={cursor} events={events} onSelect={setSelectedEvent} isMobile={isMobile} />
+        <WeekGrid
+          cursor={cursor}
+          events={events}
+          onSelect={setSelectedEvent}
+          onClickSlot={(date) => { setPrefillDate(date); setCreating(true); }}
+          isMobile={isMobile}
+        />
       )}
 
       {creating && (
@@ -327,7 +334,7 @@ function MonthGrid({ cursor, events, onSelect, onClickDay }: MonthGridProps) {
 }
 
 // ─── Week Grid ───────────────────────────────────────────────
-function WeekGrid({ cursor, events, onSelect, isMobile }: WeekGridProps) {
+function WeekGrid({ cursor, events, onSelect, onClickSlot, isMobile }: WeekGridProps) {
   const weekStart = startOfWeek(cursor);
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -375,14 +382,22 @@ function WeekGrid({ cursor, events, onSelect, isMobile }: WeekGridProps) {
                 return sameDay(s, day) && s.getHours() === hour;
               });
               return (
-                <div key={di} className="border-l border-navy-100 p-0.5 relative">
+                <div
+                  key={di}
+                  className="border-l border-navy-100 p-0.5 relative hover:bg-navy-50/50 cursor-pointer transition-colors"
+                  onClick={() => {
+                    const d = new Date(day);
+                    d.setHours(hour, 0, 0, 0);
+                    onClickSlot?.(d);
+                  }}
+                >
                   {slotEvents.map((e) => {
                     const c = TYPE_COLORS[e.event_type] || TYPE_COLORS.meeting;
                     const duration = (new Date(e.ends_at).getTime() - new Date(e.starts_at).getTime()) / 3600000;
                     return (
                       <div
                         key={e.id}
-                        onClick={() => onSelect(e)}
+                        onClick={(ev) => { ev.stopPropagation(); onSelect(e); }}
                         className={cn(
                           "text-[11px] px-1.5 py-[3px] rounded-[5px] border-l-[3px] cursor-pointer font-medium overflow-hidden leading-snug",
                           c.bg, c.text, c.border

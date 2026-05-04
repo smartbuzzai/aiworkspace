@@ -4,7 +4,7 @@ import {
   Plus, X, Sparkles, ArrowUp, ArrowRight, ArrowDown, CheckCircle2, Circle,
   Share2, Link2, Copy, Check, Trash2, Eye, EyeOff, MessageSquare,
   FileText, ChevronLeft, ExternalLink, Send, Users, FolderOpen, PenLine,
-  Pencil, Archive,
+  Pencil, Archive, Search,
 } from "lucide-react";
 import DocumentEditor from "./shared/DocumentEditor";
 import { cn } from "../lib/cn";
@@ -171,6 +171,7 @@ export default function ProjectsView() {
   const [showNew, setShowNew] = useState(false);
   const [selected, setSelected] = useState<Project | null>(null);
   const [sharePanel, setSharePanel] = useState<Project | null>(null);
+  const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -201,31 +202,58 @@ export default function ProjectsView() {
               <h1 className="text-[28px] font-extrabold text-navy-900 tracking-tight leading-tight m-0">Projects</h1>
               <div className="text-sm text-navy-500 mt-1">{projects.length} project{projects.length !== 1 ? "s" : ""}</div>
             </div>
-            <button
-              onClick={() => setShowNew(true)}
-              className="bg-blue-500 text-white border-none px-4 py-2.5 rounded-lg text-[13px] font-semibold cursor-pointer flex items-center gap-2 font-[inherit] hover:bg-blue-600 transition-all"
-            >
-              <Plus size={14} /> New project
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-white border border-navy-200 rounded-lg px-3 py-2">
+                <Search size={14} className="text-navy-400 shrink-0" />
+                <input
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  placeholder="Search projects…"
+                  className="bg-transparent border-none outline-none text-[13px] w-40 text-navy-800 font-[inherit]"
+                />
+              </div>
+              <button
+                onClick={() => setShowNew(true)}
+                className="bg-blue-500 text-white border-none px-4 py-2.5 rounded-lg text-[13px] font-semibold cursor-pointer flex items-center gap-2 font-[inherit] hover:bg-blue-600 transition-all"
+              >
+                <Plus size={14} /> New project
+              </button>
+            </div>
           </div>
 
           {loading ? (
             <div className="text-navy-500 text-[13px] p-6">Loading...</div>
           ) : projects.length === 0 ? (
-            <div className="bg-white border border-navy-200 rounded-xl p-10 text-center text-navy-500 text-sm">
-              No projects yet. Create one to get started.
+            <div className="bg-white border border-navy-200 rounded-xl p-10 text-center">
+              <p className="text-navy-500 text-sm mb-4">No projects yet.</p>
+              <button
+                onClick={() => setShowNew(true)}
+                className="bg-blue-500 text-white border-none px-4 py-2.5 rounded-lg text-[13px] font-semibold cursor-pointer inline-flex items-center gap-2 font-[inherit] hover:bg-blue-600 transition-all"
+              >
+                <Plus size={14} /> Create your first project
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
-              {projects.map(p => (
-                <ProjectCard
-                  key={p.id}
-                  project={p}
-                  onClick={() => setSelected(p)}
-                  onShare={() => setSharePanel(p)}
-                />
-              ))}
-            </div>
+            <>
+              {q && projects.filter(p => p.name.toLowerCase().includes(q.toLowerCase())).length === 0 ? (
+                <div className="bg-white border border-navy-200 rounded-xl p-8 text-center text-navy-500 text-sm">
+                  No projects match &ldquo;{q}&rdquo;
+                </div>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+                  {projects
+                    .filter(p => !q || p.name.toLowerCase().includes(q.toLowerCase()))
+                    .map(p => (
+                      <ProjectCard
+                        key={p.id}
+                        project={p}
+                        onClick={() => setSelected(p)}
+                        onShare={() => setSharePanel(p)}
+                      />
+                    ))}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -360,6 +388,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
     await fetch(`/api/projects/${project.id}/files/${fileId}`, {
       method: "DELETE", credentials: "include",
     });
+    toast("success", "File removed from project.");
     load();
   }
 

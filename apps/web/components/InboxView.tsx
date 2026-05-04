@@ -280,6 +280,8 @@ export default function InboxView() {
                 const d = await r.json();
                 setSelected((s) => (s ? { ...s, is_starred: d.is_starred } : s));
                 setThreads((ts) => ts.map((t) => (t.id === id ? { ...t, is_starred: d.is_starred } : t)));
+              } else {
+                toast("error", "Failed to update star.");
               }
             }}
             onArchive={async (id: string) => {
