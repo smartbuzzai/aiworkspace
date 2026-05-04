@@ -609,14 +609,16 @@ function AssistantPanel({ open, onCollapse, chat }: { open: boolean; onCollapse:
         <div ref={endRef} />
       </div>
 
-      <div className="px-4 py-3 border-t border-navy-200 flex gap-2 items-center">
-        <input
+      <div className="px-4 py-3 border-t border-navy-200 flex gap-2 items-end">
+        <textarea
           value={chat.input}
           onChange={e => chat.setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") chat.send(chat.input); }}
-          placeholder="Ask anything..."
+          onInput={e => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chat.send(chat.input); } }}
+          placeholder="Ask anything… Shift+Enter for newline"
           disabled={chat.streaming}
-          className="flex-1 bg-navy-50 border border-navy-200 text-navy-800 py-2 px-3 rounded-lg text-[13px] outline-none font-[inherit]"
+          rows={1}
+          className="flex-1 bg-navy-50 border border-navy-200 text-navy-800 py-2 px-3 rounded-lg text-[13px] outline-none font-[inherit] resize-none overflow-hidden"
         />
         <button
           onClick={chat.toggleListen}
@@ -682,14 +684,16 @@ function MobileAssistant({ open, onClose, chat }: { open: boolean; onClose: () =
         ))}
         <div ref={endRef} />
       </div>
-      <div className="p-3.5 border-t border-white/[0.06] flex gap-2 items-center">
-        <input
+      <div className="p-3.5 border-t border-white/[0.06] flex gap-2 items-end">
+        <textarea
           value={chat.input}
           onChange={e => chat.setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") chat.send(chat.input); }}
-          placeholder="Ask anything..."
+          onInput={e => { const t = e.currentTarget; t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 120) + "px"; }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chat.send(chat.input); } }}
+          placeholder="Ask anything… Shift+Enter for newline"
           disabled={chat.streaming}
-          className="flex-1 bg-white/[0.04] border border-white/[0.08] text-white py-[9px] px-[13px] rounded-[10px] text-[13px] outline-none"
+          rows={1}
+          className="flex-1 bg-white/[0.04] border border-white/[0.08] text-white py-[9px] px-[13px] rounded-[10px] text-[13px] outline-none resize-none overflow-hidden"
         />
         <button
           onClick={chat.toggleListen}

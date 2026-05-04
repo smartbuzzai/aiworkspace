@@ -8,8 +8,12 @@
 import { z } from "zod";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
+import { Queue } from "bullmq";
 import { query } from "../lib/db.js";
 import { encrypt, userKey } from "../lib/auth.js";
+import { redis } from "../lib/redis.js";
+
+const imapQueue = new Queue("imap-sync", { connection: redis });
 
 const accountSchema = z.object({
   label: z.string().min(1).max(50),
@@ -148,6 +152,25 @@ export default async function accountsRoutes(app) {
     );
     if (rows.length === 0) return reply.code(404).send({ error: "Not found" });
     return { account: rows[0] };
+  });
+
+  // POST /accounts/:id/sync — clear error state and trigger immediate sync
+  app.post("/:id/sync", async (req, reply) => {
+    const { rowCount } = await query(
+      `UPDATE email_accounts SET sync_status = 'idle', sync_error = NULL
+        WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user.user_id]
+    );
+    if (rowCount === 0) return reply.code(404).send({ error: "Not found" });
+    try {
+      await imapQueue.add("sync", { account_id: req.params.id }, {
+        removeOnComplete: 100, removeOnFail: 50, attempts: 3,
+        backoff: { type: "custom" },
+      });
+    } catch (err) {
+      req.log.warn("could not enqueue imap sync: " + err.message);
+    }
+    return { ok: true };
   });
 
   // DELETE /accounts/:id

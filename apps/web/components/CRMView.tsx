@@ -275,6 +275,7 @@ function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; inte
   const initial = (contact.name || "?")[0].toUpperCase();
   const sm = STATUS_MAP[contact.status] || STATUS_MAP.active;
   const [showCompose, setShowCompose] = useState(false);
+  const [showAllInteractions, setShowAllInteractions] = useState(false);
 
   return (
     <>
@@ -340,7 +341,7 @@ function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; inte
         <div className="mb-5">
           <div className="text-[10px] font-bold text-navy-500 uppercase tracking-[1.5px] mb-2">Recent activity</div>
           <div className="flex flex-col">
-            {interactions.slice(0, 8).map(i => {
+            {(showAllInteractions ? interactions : interactions.slice(0, 8)).map(i => {
               const kind = KIND_ICONS[i.kind] || KIND_ICONS.note;
               const Icon = kind.icon;
               return (
@@ -356,6 +357,14 @@ function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; inte
               );
             })}
           </div>
+          {interactions.length > 8 && (
+            <button
+              onClick={() => setShowAllInteractions(v => !v)}
+              className="mt-1.5 w-full text-[11px] font-semibold text-blue-600 bg-transparent border-none cursor-pointer py-1 hover:text-blue-700 font-[inherit]"
+            >
+              {showAllInteractions ? "Show less" : `Show ${interactions.length - 8} more`}
+            </button>
+          )}
         </div>
       )}
 

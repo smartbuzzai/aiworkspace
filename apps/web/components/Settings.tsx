@@ -141,6 +141,12 @@ function EmailAccountsSection() {
     refresh();
   }
 
+  async function retrySync(id: string) {
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, sync_status: "idle", sync_error: null } : a));
+    await fetch(`/api/accounts/${id}/sync`, { method: "POST", credentials: "include" });
+    setTimeout(refresh, 3000);
+  }
+
   async function saveLabel(id: string) {
     if (!editLabel.trim()) return;
     await fetch(`/api/accounts/${id}`, {
@@ -203,12 +209,20 @@ function EmailAccountsSection() {
                     {a.label} <span className="text-navy-500 font-medium">· {a.email_address}</span>
                   </div>
                 )}
-                <div className="text-[11px] text-navy-500 mt-0.5 font-mono">
-                  {a.sync_status === "error"
-                    ? <span className="text-red-500">Error: {a.sync_error}</span>
-                    : a.last_sync_at
-                      ? `Last sync ${new Date(a.last_sync_at).toLocaleTimeString()}`
-                      : "Waiting for first sync"}
+                <div className="text-[11px] text-navy-500 mt-0.5 font-mono flex items-center gap-2 flex-wrap">
+                  {a.sync_status === "error" ? (
+                    <>
+                      <span className="text-red-500">Error: {a.sync_error}</span>
+                      <button
+                        onClick={() => retrySync(a.id)}
+                        className="text-blue-600 font-semibold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md cursor-pointer hover:bg-blue-100 transition-colors font-[inherit] text-[10px]"
+                      >
+                        Retry sync
+                      </button>
+                    </>
+                  ) : a.last_sync_at
+                    ? `Last sync ${new Date(a.last_sync_at).toLocaleTimeString()}`
+                    : "Waiting for first sync"}
                 </div>
               </div>
               <button onClick={() => remove(a.id)} className="bg-transparent border-none p-2 text-navy-500 cursor-pointer">
@@ -664,15 +678,22 @@ function InvitesSection() {
                 dead ? "border-navy-200 bg-navy-50 opacity-60" : "border-blue-500/20 bg-blue-500/[0.03]"
               )}>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <code className="text-sm font-mono font-bold text-navy-900 tracking-wide">{inv.code}</code>
-                    <button
-                      onClick={() => copyCode(inv.code)}
-                      className="bg-transparent border-none cursor-pointer p-0.5 text-navy-400 hover:text-blue-500"
-                      title="Copy code"
-                    >
-                      {copied === inv.code ? <CheckCircle2 size={13} className="text-green-500" /> : <Copy size={13} />}
-                    </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className={cn("text-sm font-mono font-bold tracking-wide", dead ? "text-navy-400 line-through" : "text-navy-900")}>{inv.code}</code>
+                    {!dead && (
+                      <button
+                        onClick={() => copyCode(inv.code)}
+                        className="bg-transparent border-none cursor-pointer p-0.5 text-navy-400 hover:text-blue-500"
+                        title="Copy code"
+                      >
+                        {copied === inv.code ? <CheckCircle2 size={13} className="text-green-500" /> : <Copy size={13} />}
+                      </button>
+                    )}
+                    {dead && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-600 uppercase tracking-wide">
+                        {expired ? "Expired" : "Exhausted"}
+                      </span>
+                    )}
                     {inv.email && (
                       <span className="text-[11px] text-navy-500">&middot; {inv.email}</span>
                     )}
@@ -779,7 +800,7 @@ function SessionsSection() {
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-navy-500 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap">
+                  <div className="text-[11px] text-navy-500 mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap" title={s.user_agent || undefined}>
                     {deviceLabel(s.user_agent)}
                   </div>
                   <div className="text-[11px] text-navy-400 mt-0.5 font-mono">
