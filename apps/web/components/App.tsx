@@ -2,16 +2,21 @@
 
 import { useEffect, useState, useRef } from "react";
 import {
-  Inbox, Users, Calendar, FolderKanban, FileStack,
+  Inbox, Users, Calendar, FolderKanban, FileStack, Bell, CheckCircle2,
   Home, Sparkles, Send, Mic, X, Menu, Settings as SettingsIcon,
-  LogOut,
+  LogOut, ArrowRight, Moon, Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Settings from "./Settings";
 import InboxView from "./InboxView";
 import CRMView from "./CRMView";
 import CalendarView from "./CalendarView";
+import TasksView from "./TasksView";
+import ProjectsView from "./ProjectsView";
+import LibraryView from "./LibraryView";
+import NotificationsView from "./NotificationsView";
 import { cn } from "../lib/cn";
+import { ToastProvider } from "./shared/Toast";
 import type { User } from "../lib/types";
 
 interface AppProps {
@@ -30,15 +35,42 @@ const NAV_ITEMS: NavItem[] = [
   { id: "inbox", label: "Unified Inbox", icon: Inbox },
   { id: "crm", label: "CRM", icon: Users },
   { id: "calendar", label: "Calendar", icon: Calendar },
+  { id: "tasks", label: "Tasks", icon: CheckCircle2 },
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "library", label: "Library", icon: FileStack },
+  { id: "notifications", label: "Notifications", icon: Bell },
 ];
 
 export default function App({ user, onLogout }: AppProps) {
   const [view, setView] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const chat = useChat();
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    } else {
+      setTheme("light");
+      document.documentElement.classList.remove("dark");
+    }
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    localStorage.setItem("theme", next);
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 900);
@@ -53,12 +85,20 @@ export default function App({ user, onLogout }: AppProps) {
     }
   }, []);
 
+  useEffect(() => {
+    fetch("/api/push/notifications?limit=50", { credentials: "include" })
+      .then(r => r.json())
+      .then(d => setUnreadNotifCount((d.notifications || []).filter((n: any) => !n.read_at).length))
+      .catch(() => {});
+  }, []);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     onLogout();
   }
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-navy-50 flex">
       {/* Sidebar */}
       <aside
@@ -78,10 +118,15 @@ export default function App({ user, onLogout }: AppProps) {
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
             const active = view === item.id;
+            const showBadge = item.id === "notifications" && unreadNotifCount > 0;
             return (
               <button
                 key={item.id}
-                onClick={() => { setView(item.id); setSidebarOpen(false); }}
+                onClick={() => {
+                  if (item.id === "notifications") setUnreadNotifCount(0);
+                  setView(item.id);
+                  setSidebarOpen(false);
+                }}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-[10px] border text-sm w-full text-left cursor-pointer",
                   active
@@ -89,7 +134,15 @@ export default function App({ user, onLogout }: AppProps) {
                     : "bg-transparent border-transparent text-navy-300 font-medium"
                 )}
               >
-                <Icon size={17} /> {item.label}
+                <div className="relative shrink-0">
+                  <Icon size={17} />
+                  {showBadge && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5 leading-none">
+                      {unreadNotifCount > 99 ? "99+" : unreadNotifCount}
+                    </span>
+                  )}
+                </div>
+                {item.label}
               </button>
             );
           })}
@@ -120,6 +173,13 @@ export default function App({ user, onLogout }: AppProps) {
               <SettingsIcon size={12} /> Settings
             </button>
             <button
+              onClick={toggleTheme}
+              title={theme === "light" ? "Dark mode" : "Light mode"}
+              className="flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-navy-300 py-[7px] px-2.5 rounded-lg cursor-pointer hover:text-amber-400 transition-colors"
+            >
+              {theme === "light" ? <Moon size={12} /> : <Sun size={12} />}
+            </button>
+            <button
               onClick={logout}
               title="Sign out"
               className="flex items-center justify-center bg-white/[0.04] border border-white/[0.06] text-navy-400 py-[7px] px-2.5 rounded-lg cursor-pointer"
@@ -130,8 +190,12 @@ export default function App({ user, onLogout }: AppProps) {
         </div>
       </aside>
 
-      {/* Main */}
-      <div className={cn("flex-1 flex flex-col", !isMobile && "ml-60")}>
+      {/* Main content — shifts right for sidebar, shifts left for panel */}
+      <div className={cn(
+        "flex-1 flex flex-col transition-[margin,padding] duration-300 ease-in-out",
+        !isMobile && "ml-60",
+        !isMobile && panelOpen && "pr-[360px]"
+      )}>
         <header className={cn(
           "h-16 bg-white border-b border-navy-200 flex items-center gap-3 sticky top-0 z-40",
           isMobile ? "px-4" : "px-8"
@@ -150,16 +214,16 @@ export default function App({ user, onLogout }: AppProps) {
           )}>
             {view === "dashboard"
               ? `Good morning, ${user.name || user.email.split("@")[0]}`
-              : view === "settings"
-                ? "Settings"
-                : view.charAt(0).toUpperCase() + view.slice(1)}
+              : NAV_ITEMS.find(n => n.id === view)?.label || view.charAt(0).toUpperCase() + view.slice(1)}
           </h1>
-          <button
-            onClick={() => setAssistantOpen(true)}
-            className="ml-auto flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-blue-500 text-white border-none py-2 px-3.5 rounded-[10px] text-[13px] font-semibold cursor-pointer"
-          >
-            <Sparkles size={14} /> {isMobile ? "AI" : "Ask AI"}
-          </button>
+          {isMobile && (
+            <button
+              onClick={() => setPanelOpen(true)}
+              className="ml-auto flex items-center gap-1.5 bg-gradient-to-br from-blue-600 to-blue-500 text-white border-none py-2 px-3.5 rounded-[10px] text-[13px] font-semibold cursor-pointer"
+            >
+              <Sparkles size={14} /> AI
+            </button>
+          )}
         </header>
 
         <main className={cn("flex-1", isMobile ? "p-4" : "p-8")}>
@@ -167,78 +231,37 @@ export default function App({ user, onLogout }: AppProps) {
           {view === "inbox" && <InboxView />}
           {view === "crm" && <CRMView />}
           {view === "calendar" && <CalendarView />}
-          {view === "projects" && <ResourceList endpoint="projects" render={renderProject} empty="No projects yet." />}
-          {view === "library" && <ResourceList endpoint="files" render={renderFile} empty="No files uploaded." />}
+          {view === "tasks" && <TasksView />}
+          {view === "projects" && <ProjectsView />}
+          {view === "library" && <LibraryView />}
+          {view === "notifications" && <NotificationsView />}
           {view === "settings" && <Settings user={user} />}
         </main>
       </div>
 
-      <Assistant open={assistantOpen} onToggle={() => setAssistantOpen(!assistantOpen)} isMobile={isMobile} />
+      {/* Assistant panel (docked right) */}
+      {isMobile ? (
+        <MobileAssistant open={panelOpen} onClose={() => setPanelOpen(false)} chat={chat} />
+      ) : (
+        <>
+          <AssistantPanel open={panelOpen} onCollapse={() => setPanelOpen(false)} chat={chat} />
+          {!panelOpen && (
+            <button
+              onClick={() => setPanelOpen(true)}
+              className="fixed top-20 right-0 bg-white border border-navy-200 border-r-0 py-2.5 px-2 rounded-l-lg z-[91] text-navy-600 cursor-pointer hover:text-navy-900 hover:bg-navy-50 transition-all"
+              title="Open Assistant"
+            >
+              <Sparkles size={16} />
+            </button>
+          )}
+        </>
+      )}
     </div>
+    </ToastProvider>
   );
 }
 
-// ─── Generic resource list ───────────────────────────────────
-interface ResourceListProps {
-  endpoint: string;
-  render: (item: any) => React.ReactNode;
-  empty: string;
-}
-
-function ResourceList({ endpoint, render, empty }: ResourceListProps) {
-  const [items, setItems] = useState<any[] | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/${endpoint}`, { credentials: "include" })
-      .then(r => r.json())
-      .then(data => {
-        const key = Object.keys(data).find(k => Array.isArray(data[k]));
-        setItems(data[key!] || []);
-      })
-      .catch(() => setItems([]));
-  }, [endpoint]);
-
-  if (items === null) return <div className="text-navy-500">Loading…</div>;
-  if (items.length === 0) {
-    return (
-      <div className="bg-white border border-navy-200 rounded-[14px] p-10 text-center text-navy-500 text-sm">
-        {empty}
-      </div>
-    );
-  }
-  return <div className="flex flex-col gap-2.5">{items.map(render)}</div>;
-}
-
-const CARD = "bg-white border border-navy-200 rounded-xl p-4";
-
-const renderProject = (p: any) => (
-  <div key={p.id} className={CARD}>
-    <div className="flex justify-between">
-      <div className="text-sm font-semibold">{p.name}</div>
-      <span className="text-[11px] text-navy-500">{p.stage}</span>
-    </div>
-    <div className="h-1 bg-navy-100 rounded-sm mt-2.5 overflow-hidden">
-      <div
-        className="h-full bg-gradient-to-r from-blue-500 to-green-500"
-        style={{ width: `${p.progress}%` }}
-      />
-    </div>
-    <div className="text-[11px] text-navy-500 mt-1.5">
-      {p.tasks_done || 0}/{p.task_count || 0} tasks · {p.progress}%
-    </div>
-  </div>
-);
-
-const renderFile = (f: any) => (
-  <div key={f.id} className={CARD}>
-    <div className="text-sm font-semibold">{f.name}</div>
-    <div className="text-xs text-navy-500 mt-1">
-      {f.kind} · {(f.size_bytes / 1024).toFixed(0)} KB · {new Date(f.created_at).toLocaleDateString()}
-    </div>
-  </div>
-);
-
-// ─── Dashboard ───────────────────────────────────────────────
+// ─── Dashboard ────────���──────────────────────────────────────
 interface DashboardData {
   events: any[];
   tasks: any[];
@@ -386,32 +409,39 @@ function DashWidget({ title, icon: Icon, count, emptyText, children }: DashWidge
   );
 }
 
-// ─── Assistant (streaming chat) ──────────────────────────────
+// ─── Shared chat hook (single source of truth) ──────────────
 interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
 }
 
-interface AssistantProps {
-  open: boolean;
-  onToggle: () => void;
-  isMobile: boolean;
+interface ChatState {
+  messages: ChatMessage[];
+  streaming: boolean;
+  input: string;
+  setInput: (v: string) => void;
+  send: (text: string) => void;
+  listening: boolean;
+  toggleListen: () => void;
 }
 
-function Assistant({ open, onToggle, isMobile }: AssistantProps) {
+function useChat(): ChatState {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [listening, setListening] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streaming]);
+    return () => {
+      if (mediaRef.current && mediaRef.current.state !== "inactive") {
+        mediaRef.current.stop();
+      }
+    };
+  }, []);
 
   async function send(text: string) {
     if (!text.trim() || streaming) return;
@@ -456,7 +486,7 @@ function Assistant({ open, onToggle, isMobile }: AssistantProps) {
             setMessages(m => [...m.slice(0, -1), { ...asstMsg }]);
           }
           if (eventType === "tool_result") {
-            asstMsg.content += `\n\n✓ ${data.tool}`;
+            asstMsg.content += `\n\n${data.tool}`;
             setMessages(m => [...m.slice(0, -1), { ...asstMsg }]);
           }
         }
@@ -476,46 +506,147 @@ function Assistant({ open, onToggle, isMobile }: AssistantProps) {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      // Pick a supported mime type — Safari doesn't support audio/webm
+      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
+        : "audio/wav";
+      const ext = mime === "audio/webm" ? "webm" : mime === "audio/mp4" ? "m4a" : "wav";
+      const mr = new MediaRecorder(stream, ...(MediaRecorder.isTypeSupported(mime) ? [{ mimeType: mime }] : []));
       chunksRef.current = [];
       mr.ondataavailable = e => chunksRef.current.push(e.data);
       mr.onstop = async () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mime });
+        if (blob.size === 0) return;
         const fd = new FormData();
-        fd.append("file", blob, "voice.webm");
-        const r = await fetch("/api/assistant/voice/transcribe", {
-          method: "POST", credentials: "include", body: fd,
-        });
-        const { text } = await r.json();
-        if (text) send(text);
+        fd.append("file", blob, `voice.${ext}`);
+        try {
+          const r = await fetch("/api/assistant/voice/transcribe", {
+            method: "POST", credentials: "include", body: fd,
+          });
+          if (!r.ok) {
+            console.error("Transcribe failed:", r.status);
+            return;
+          }
+          const data = await r.json();
+          if (data.text?.trim()) send(data.text.trim());
+        } catch (err) {
+          console.error("Voice transcription error:", err);
+        }
       };
       mediaRef.current = mr;
       mr.start();
       setListening(true);
-    } catch {
-      alert("Mic access denied");
+    } catch (err) {
+      console.error("Mic error:", err);
+      alert("Microphone access denied or not available.");
     }
   }
 
-  if (!open) {
-    return (
-      <button
-        onClick={onToggle}
-        className="fixed bottom-6 right-6 w-[58px] h-[58px] rounded-full bg-gradient-to-br from-blue-600 to-green-500 border-none cursor-pointer shadow-[0_10px_28px_rgba(37,99,235,0.4)] flex items-center justify-center text-white z-[80]"
-      >
-        <Sparkles size={24} />
-      </button>
-    );
-  }
+  return { messages, streaming, input, setInput, send, listening, toggleListen };
+}
+
+// ─── Assistant Panel (docked right, light theme) ─────────────
+function AssistantPanel({ open, onCollapse, chat }: { open: boolean; onCollapse: () => void; chat: ChatState }) {
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages, chat.streaming]);
 
   return (
-    <div className={cn(
-      "fixed bg-navy-950 border border-white/[0.08] flex flex-col z-[80] shadow-[0_25px_60px_rgba(0,0,0,0.35)]",
-      isMobile
-        ? "inset-0 w-full h-full rounded-none"
-        : "bottom-6 right-6 w-[400px] h-[600px] rounded-[18px]"
+    <aside className={cn(
+      "fixed top-0 right-0 bottom-0 w-[360px] bg-white border-l border-navy-200 z-[90] flex flex-col transition-transform duration-300 ease-in-out",
+      open ? "translate-x-0" : "translate-x-[360px]"
     )}>
+      <div className="px-5 py-4 border-b border-navy-200 flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center font-mono font-extrabold text-white text-[11px]">
+          A
+        </div>
+        <div className="flex-1">
+          <div className="text-[13px] font-bold text-navy-900">Assistant</div>
+          <div className="text-[11px] text-green-500 font-mono">Online</div>
+        </div>
+        <button
+          onClick={onCollapse}
+          className="bg-transparent border-none text-navy-500 p-1 rounded-lg cursor-pointer hover:text-navy-800 hover:bg-navy-50 transition-all"
+          title="Collapse panel"
+        >
+          <ArrowRight size={16} />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+        {chat.messages.length === 0 && (
+          <div className="text-navy-400 text-[13px] text-center mt-10 leading-relaxed">
+            Ask me anything. I can search your data, draft replies,<br />
+            schedule events, and create tasks.
+          </div>
+        )}
+        {chat.messages.map(m => (
+          <div key={m.id} className={cn("flex gap-3", m.role === "user" ? "flex-row-reverse self-end" : "self-start")}>
+            <div className={cn(
+              "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[12px] font-extrabold font-mono text-white",
+              m.role === "user"
+                ? "bg-gradient-to-br from-amber-500 to-red-500"
+                : "bg-gradient-to-br from-blue-500 to-green-500"
+            )}>
+              {m.role === "user" ? "U" : "AI"}
+            </div>
+            <div className={cn(
+              "max-w-[80%] px-4 py-3 rounded-[14px] text-sm leading-relaxed whitespace-pre-wrap",
+              m.role === "user"
+                ? "bg-blue-500 text-white rounded-br-[4px]"
+                : "bg-white border border-navy-200 text-navy-800 rounded-bl-[4px]"
+            )}>
+              {m.content}
+              {chat.streaming && m.role === "assistant" && m === chat.messages[chat.messages.length - 1] && (
+                <span className="opacity-60">|</span>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      <div className="px-4 py-3 border-t border-navy-200 flex gap-2 items-center">
+        <input
+          value={chat.input}
+          onChange={e => chat.setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") chat.send(chat.input); }}
+          placeholder="Ask anything..."
+          disabled={chat.streaming}
+          className="flex-1 bg-navy-50 border border-navy-200 text-navy-800 py-2 px-3 rounded-lg text-[13px] outline-none font-[inherit]"
+        />
+        <button
+          onClick={chat.toggleListen}
+          className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-all",
+            chat.listening
+              ? "bg-gradient-to-br from-blue-500 to-green-500 text-white border-none"
+              : "bg-navy-50 border border-navy-200 text-navy-600"
+          )}
+          title="Voice input"
+        >
+          <Mic size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Mobile Assistant (fullscreen overlay) ───────────────────
+function MobileAssistant({ open, onClose, chat }: { open: boolean; onClose: () => void; chat: ChatState }) {
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages, chat.streaming]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-navy-950 flex flex-col z-[80]">
       <div className="p-4 border-b border-white/[0.06] flex items-center gap-3">
         <div className="w-[38px] h-[38px] rounded-[11px] bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center">
           <Sparkles size={17} color="white" />
@@ -524,22 +655,17 @@ function Assistant({ open, onToggle, isMobile }: AssistantProps) {
           <div className="text-white text-sm font-bold">AI Assistant</div>
           <div className="text-green-400 text-[11px]">Ready</div>
         </div>
-        <button
-          onClick={onToggle}
-          className="bg-white/[0.06] border-none text-navy-300 p-[7px] rounded-lg cursor-pointer"
-        >
+        <button onClick={onClose} className="bg-white/[0.06] border-none text-navy-300 p-[7px] rounded-lg cursor-pointer">
           <X size={15} />
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-        {messages.length === 0 && (
+        {chat.messages.length === 0 && (
           <div className="text-navy-400 text-[13px] text-center mt-10">
-            Ask me anything. I can search your data, draft replies,<br />
-            schedule events, and create tasks.
+            Ask me anything.
           </div>
         )}
-        {messages.map(m => (
+        {chat.messages.map(m => (
           <div key={m.id} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
             <div className={cn(
               "max-w-[82%] px-3.5 py-2.5 rounded-[14px] text-[13px] leading-relaxed whitespace-pre-wrap",
@@ -548,41 +674,41 @@ function Assistant({ open, onToggle, isMobile }: AssistantProps) {
                 : "bg-white/[0.04] border border-white/[0.06] text-navy-200"
             )}>
               {m.content}
-              {streaming && m.role === "assistant" && m === messages[messages.length - 1] && (
-                <span className="opacity-60">▋</span>
+              {chat.streaming && m.role === "assistant" && m === chat.messages[chat.messages.length - 1] && (
+                <span className="opacity-60">|</span>
               )}
             </div>
           </div>
         ))}
         <div ref={endRef} />
       </div>
-
       <div className="p-3.5 border-t border-white/[0.06] flex gap-2 items-center">
         <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") send(input); }}
-          placeholder="Ask or say a command…"
-          disabled={streaming}
+          value={chat.input}
+          onChange={e => chat.setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") chat.send(chat.input); }}
+          placeholder="Ask anything..."
+          disabled={chat.streaming}
           className="flex-1 bg-white/[0.04] border border-white/[0.08] text-white py-[9px] px-[13px] rounded-[10px] text-[13px] outline-none"
         />
         <button
-          onClick={toggleListen}
+          onClick={chat.toggleListen}
           className={cn(
-            "w-[38px] h-[38px] rounded-[10px] text-white cursor-pointer flex items-center justify-center",
-            listening
-              ? "bg-gradient-to-br from-green-500 to-teal-500 border-none"
-              : "bg-white/[0.06] border border-white/10"
+            "w-[38px] h-[38px] rounded-[10px] flex items-center justify-center cursor-pointer transition-all",
+            chat.listening
+              ? "bg-gradient-to-br from-blue-500 to-green-500 text-white border-none"
+              : "bg-white/[0.04] border border-white/[0.08] text-navy-300"
           )}
+          title="Voice input"
         >
           <Mic size={15} />
         </button>
         <button
-          onClick={() => send(input)}
-          disabled={streaming || !input.trim()}
+          onClick={() => chat.send(chat.input)}
+          disabled={chat.streaming || !chat.input.trim()}
           className={cn(
             "w-[38px] h-[38px] rounded-[10px] bg-gradient-to-br from-blue-600 to-blue-500 border-none text-white cursor-pointer flex items-center justify-center",
-            (streaming || !input.trim()) && "opacity-50"
+            (chat.streaming || !chat.input.trim()) && "opacity-50"
           )}
         >
           <Send size={14} />
