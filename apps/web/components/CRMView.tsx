@@ -579,6 +579,10 @@ function ContactModal({ contact, onClose, onSaved }: {
         body: JSON.stringify(f),
       });
       const d = await r.json();
+      if (!r.ok) {
+        toast("error", d.error || "Failed to save contact.");
+        return;
+      }
       toast("success", isEdit ? "Contact saved." : "Contact created.");
       onSaved(d.contact || d);
     } finally {
@@ -597,7 +601,7 @@ function ContactModal({ contact, onClose, onSaved }: {
         </button>
       </div>
       <div className="p-5 flex flex-col gap-2.5">
-        <TextInput label="Name *" value={f.name} onChange={v => setF({ ...f, name: v })} />
+        <TextInput label="Name *" value={f.name} onChange={v => setF({ ...f, name: v })} autoFocus />
         <TextInput label="Email" value={f.email} onChange={v => setF({ ...f, email: v })} />
         <div className="grid grid-cols-2 gap-2.5">
           <TextInput label="Company" value={f.company} onChange={v => setF({ ...f, company: v })} />

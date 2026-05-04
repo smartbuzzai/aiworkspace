@@ -1425,6 +1425,7 @@ function EditProjectModal({ project, onClose, onSaved }: {
 /* ------------------------------------------------------------------ */
 
 function NewProjectModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1433,12 +1434,17 @@ function NewProjectModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await fetch("/api/projects", {
+      const r = await fetch("/api/projects", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), description: description.trim() || null }),
       });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to create project.");
+        return;
+      }
       onSaved();
     } finally {
       setSaving(false);
@@ -1454,7 +1460,7 @@ function NewProjectModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
         </button>
       </div>
       <div className="p-5 flex flex-col gap-2.5">
-        <TextInput label="Project name *" value={name} onChange={setName} />
+        <TextInput label="Project name *" value={name} onChange={setName} autoFocus />
         <div>
           <div className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-[5px]">Description</div>
           <textarea
@@ -1504,6 +1510,7 @@ function TaskModal({ task, projectId, onClose, onSaved, onDelete }: {
         }
       : { title: "", description: "", priority: "medium", status: "open", due_at: "", tags: "" }
   );
+  const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -1519,12 +1526,17 @@ function TaskModal({ task, projectId, onClose, onSaved, onDelete }: {
         tags: f.tags ? f.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
         project_id: projectId,
       };
-      await fetch(isEdit ? `/api/tasks/${task!.id}` : "/api/tasks", {
+      const r = await fetch(isEdit ? `/api/tasks/${task!.id}` : "/api/tasks", {
         method: isEdit ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to save task.");
+        return;
+      }
       onSaved();
     } finally {
       setSaving(false);
@@ -1540,7 +1552,7 @@ function TaskModal({ task, projectId, onClose, onSaved, onDelete }: {
         </button>
       </div>
       <div className="p-5 flex flex-col gap-2.5">
-        <TextInput label="Title *" value={f.title} onChange={v => setF({ ...f, title: v })} />
+        <TextInput label="Title *" value={f.title} onChange={v => setF({ ...f, title: v })} autoFocus />
         <div>
           <div className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-[5px]">Description</div>
           <textarea
