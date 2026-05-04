@@ -213,9 +213,14 @@ export default function LibraryView() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
-    await fetch(`/api/files/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
-    setDeleteTarget(null);
-    load();
+    try {
+      const r = await fetch(`/api/files/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error();
+      setDeleteTarget(null);
+      load();
+    } catch {
+      toast("error", "Failed to delete file.");
+    }
   }
 
   function navigateToFolder(folder: FolderItem) {
@@ -543,9 +548,14 @@ export default function LibraryView() {
               </button>
               <button
                 onClick={async () => {
-                  await fetch(`/api/documents/${deleteDocTarget.id}`, { method: "DELETE", credentials: "include" });
-                  setDeleteDocTarget(null);
-                  load();
+                  try {
+                    const r = await fetch(`/api/documents/${deleteDocTarget.id}`, { method: "DELETE", credentials: "include" });
+                    if (!r.ok) throw new Error();
+                    setDeleteDocTarget(null);
+                    load();
+                  } catch {
+                    toast("error", "Failed to delete document.");
+                  }
                 }}
                 className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
               >

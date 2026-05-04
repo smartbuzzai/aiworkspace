@@ -108,10 +108,15 @@ export default function TasksView() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
-    await fetch(`/api/tasks/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
-    toast("success", "Task deleted.");
-    setDeleteTarget(null);
-    load();
+    try {
+      const r = await fetch(`/api/tasks/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
+      if (!r.ok) throw new Error();
+      toast("success", "Task deleted.");
+      setDeleteTarget(null);
+      load();
+    } catch {
+      toast("error", "Failed to delete task.");
+    }
   }
 
   const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };

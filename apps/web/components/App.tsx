@@ -504,8 +504,11 @@ function useChat(): ChatState {
           }
         }
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setMessages(m => [
+        ...m.slice(0, -1),
+        { ...asstMsg, content: "⚠ Something went wrong — please try again." },
+      ]);
     } finally {
       setStreaming(false);
     }
@@ -538,21 +541,20 @@ function useChat(): ChatState {
             method: "POST", credentials: "include", body: fd,
           });
           if (!r.ok) {
-            console.error("Transcribe failed:", r.status);
+            setMessages(m => [...m, { id: Date.now(), role: "assistant", content: "⚠ Voice transcription failed — please try typing instead." }]);
             return;
           }
           const data = await r.json();
           if (data.text?.trim()) send(data.text.trim());
-        } catch (err) {
-          console.error("Voice transcription error:", err);
+        } catch {
+          setMessages(m => [...m, { id: Date.now(), role: "assistant", content: "⚠ Voice transcription failed — please try typing instead." }]);
         }
       };
       mediaRef.current = mr;
       mr.start();
       setListening(true);
-    } catch (err) {
-      console.error("Mic error:", err);
-      alert("Microphone access denied or not available.");
+    } catch {
+      setMessages(m => [...m, { id: Date.now(), role: "assistant", content: "⚠ Microphone access was denied. Allow mic access in your browser settings and try again." }]);
     }
   }
 
