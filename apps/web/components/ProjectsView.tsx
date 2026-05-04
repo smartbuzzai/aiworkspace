@@ -307,6 +307,8 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
   const [documents, setDocuments] = useState<Document[]>([]);
   const [editingDoc, setEditingDoc] = useState<Document | null | "new">(null);
   const [deleteDocTarget, setDeleteDocTarget] = useState<Document | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -394,6 +396,22 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
     load();
   }
 
+  async function moveTask(taskId: string, newStatus: string) {
+    const prev = tasks.find(t => t.id === taskId);
+    if (!prev || prev.status === newStatus) return;
+    setTasks(ts => ts.map(t => t.id === taskId ? { ...t, status: newStatus as Task["status"] } : t));
+    try {
+      await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch {
+      setTasks(ts => ts.map(t => t.id === taskId ? { ...t, status: prev.status } : t));
+      toast("error", "Failed to move task.");
+    }
+  }
+
   const columns = [
     { key: "open", title: "To Do", color: "bg-navy-500", filter: (t: Task) => t.status === "open" },
     { key: "in_progress", title: "In Progress", color: "bg-blue-500", filter: (t: Task) => t.status === "in_progress" },
@@ -433,8 +451,25 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
         <div className="grid grid-cols-3 gap-4">
           {columns.map(col => {
             const items = tasks.filter(col.filter);
+            const isOver = dragOverCol === col.key;
             return (
-              <div key={col.key} className="bg-navy-50 rounded-xl p-3 min-h-[300px]">
+              <div
+                key={col.key}
+                className={cn(
+                  "rounded-xl p-3 min-h-[300px] transition-colors",
+                  isOver ? "bg-blue-50 ring-2 ring-blue-300 ring-inset" : "bg-navy-50"
+                )}
+                onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
+                onDragLeave={e => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null);
+                }}
+                onDrop={e => {
+                  e.preventDefault();
+                  if (draggedId) moveTask(draggedId, col.key);
+                  setDraggedId(null);
+                  setDragOverCol(null);
+                }}
+              >
                 <div className="flex items-center gap-2 mb-3 px-1">
                   <span className={cn("w-2 h-2 rounded-full", col.color)} />
                   <span className="text-[11px] font-bold text-navy-600 uppercase tracking-wider">{col.title}</span>
@@ -443,9 +478,13 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
                 {items.map(task => (
                   <div
                     key={task.id}
+                    draggable
+                    onDragStart={() => setDraggedId(task.id)}
+                    onDragEnd={() => { setDraggedId(null); setDragOverCol(null); }}
                     className={cn(
-                      "bg-white rounded-[10px] p-3 mb-2 border border-navy-200 transition-all hover:border-navy-300 group",
-                      task.client_visible && "ring-1 ring-blue-300"
+                      "bg-white rounded-[10px] p-3 mb-2 border border-navy-200 transition-all hover:border-navy-300 group cursor-grab active:cursor-grabbing select-none",
+                      task.client_visible && "ring-1 ring-blue-300",
+                      draggedId === task.id && "opacity-40"
                     )}
                   >
                     <div className="flex items-start gap-2">
@@ -478,6 +517,9 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
                     )}
                   </div>
                 ))}
+                {isOver && draggedId && (
+                  <div className="h-14 rounded-[10px] border-2 border-dashed border-blue-300 bg-blue-50/60 mb-2" />
+                )}
               </div>
             );
           })}
