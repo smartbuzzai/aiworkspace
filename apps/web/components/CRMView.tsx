@@ -372,6 +372,7 @@ function DetailPanel({ contact, interactions, onEdit }: { contact: Contact; inte
       <button
         onClick={() => contact.email ? setShowCompose(true) : undefined}
         disabled={!contact.email}
+        title={contact.email ? undefined : "Add an email address to this contact first"}
         className={cn(
           "w-full bg-blue-500 text-white border-none py-2.5 px-4 rounded-lg text-[13px] font-semibold font-[inherit] transition-all mt-2",
           contact.email ? "cursor-pointer hover:bg-blue-600" : "opacity-50 cursor-not-allowed"

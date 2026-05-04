@@ -642,7 +642,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
                           {file.client_visible ? <Eye size={14} /> : <EyeOff size={14} />}
                         </button>
                         <button
-                          onClick={() => unlinkFile(file.id)}
+                          onClick={() => confirm("Remove this file from the project?") && unlinkFile(file.id)}
                           className="bg-transparent border-none cursor-pointer p-1 text-navy-300 hover:text-red-500 rounded-md opacity-0 group-hover:opacity-100 transition-all"
                           title="Remove from project"
                         >

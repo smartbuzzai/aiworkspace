@@ -60,6 +60,7 @@ export default function NotificationsView() {
     const now = new Date().toISOString();
     const unread = notifications.filter(n => !n.read_at);
     if (unread.length === 0) return;
+    if (unread.length > 5 && !confirm(`Mark all ${unread.length} notifications as read?`)) return;
     setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? now })));
     Promise.all(
       unread.map(n => fetch(`/api/push/notifications/${n.id}/read`, { method: "POST", credentials: "include" }))

@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Plus, X, Clock, MapPin, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
+import { useToast } from "./shared/Toast";
 
 // ─── Interfaces ──────────────────────────────────────────────
 interface CalendarEvent {
@@ -536,6 +537,7 @@ function EventForm({
 
 // ─── Event Create Modal ──────────────────────────────────────
 function EventModal({ onClose, onSaved, initialDate }: EventModalProps) {
+  const { toast } = useToast();
   const defaultDate = initialDate ? dateToInputValue(initialDate) : new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState<EventFormState>({
     title: "",
@@ -550,10 +552,14 @@ function EventModal({ onClose, onSaved, initialDate }: EventModalProps) {
 
   async function handleSave() {
     if (!form.title.trim() || saving) return;
+    const starts_at = new Date(`${form.date}T${form.start_time}:00`);
+    const ends_at = new Date(`${form.date}T${form.end_time}:00`);
+    if (ends_at <= starts_at) {
+      toast("error", "End time must be after start time.");
+      return;
+    }
     setSaving(true);
     try {
-      const starts_at = new Date(`${form.date}T${form.start_time}:00`).toISOString();
-      const ends_at = new Date(`${form.date}T${form.end_time}:00`).toISOString();
       const r = await fetch("/api/events", {
         method: "POST",
         credentials: "include",
@@ -563,11 +569,18 @@ function EventModal({ onClose, onSaved, initialDate }: EventModalProps) {
           location: form.location || undefined,
           description: form.description || undefined,
           event_type: form.event_type,
-          starts_at,
-          ends_at,
+          starts_at: starts_at.toISOString(),
+          ends_at: ends_at.toISOString(),
         }),
       });
-      if (r.ok) onSaved();
+      if (r.ok) {
+        onSaved();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to save event.");
+      }
+    } catch {
+      toast("error", "Network error — event not saved.");
     } finally {
       setSaving(false);
     }
@@ -588,6 +601,7 @@ function EventModal({ onClose, onSaved, initialDate }: EventModalProps) {
 
 // ─── Event Detail + Edit ─────────────────────────────────────
 function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
+  const { toast } = useToast();
   const c = TYPE_COLORS[event.event_type] || TYPE_COLORS.meeting;
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<EventFormState>(() => eventToFormState(event));
@@ -596,11 +610,15 @@ function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
 
   async function handleSave() {
     if (!form.title.trim() || saving) return;
+    const starts_at = new Date(`${form.date}T${form.start_time}:00`);
+    const ends_at = new Date(`${form.date}T${form.end_time}:00`);
+    if (ends_at <= starts_at) {
+      toast("error", "End time must be after start time.");
+      return;
+    }
     setSaving(true);
     try {
-      const starts_at = new Date(`${form.date}T${form.start_time}:00`).toISOString();
-      const ends_at = new Date(`${form.date}T${form.end_time}:00`).toISOString();
-      await fetch(`/api/events/${event.id}`, {
+      const r = await fetch(`/api/events/${event.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -609,11 +627,18 @@ function EventDetail({ event, onClose, onDelete, onSaved }: EventDetailProps) {
           location: form.location || null,
           description: form.description || null,
           event_type: form.event_type,
-          starts_at,
-          ends_at,
+          starts_at: starts_at.toISOString(),
+          ends_at: ends_at.toISOString(),
         }),
       });
-      onSaved();
+      if (r.ok) {
+        onSaved();
+      } else {
+        const d = await r.json().catch(() => ({}));
+        toast("error", d.error || "Failed to save event.");
+      }
+    } catch {
+      toast("error", "Network error — event not saved.");
     } finally {
       setSaving(false);
     }
