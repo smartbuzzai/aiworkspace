@@ -56,15 +56,24 @@ export default function TasksView() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>("active");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [projectFilter, setProjectFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(() =>
+    typeof window !== "undefined" ? (localStorage.getItem("tasks.statusFilter") ?? "active") : "active"
+  );
+  const [priorityFilter, setPriorityFilter] = useState<string>(() =>
+    typeof window !== "undefined" ? (localStorage.getItem("tasks.priorityFilter") ?? "all") : "all"
+  );
+  const [projectFilter, setProjectFilter] = useState<string>(() =>
+    typeof window !== "undefined" ? (localStorage.getItem("tasks.projectFilter") ?? "all") : "all"
+  );
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
   const { toast } = useToast();
 
   useEffect(() => { load(); loadProjects(); }, []);
+  useEffect(() => { localStorage.setItem("tasks.statusFilter", statusFilter); }, [statusFilter]);
+  useEffect(() => { localStorage.setItem("tasks.priorityFilter", priorityFilter); }, [priorityFilter]);
+  useEffect(() => { localStorage.setItem("tasks.projectFilter", projectFilter); }, [projectFilter]);
 
   async function load() {
     setLoading(true);

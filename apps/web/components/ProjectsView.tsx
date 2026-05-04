@@ -292,8 +292,8 @@ function ProjectCard({ project: p, onClick, onShare }: { project: Project; onCli
       <div className="flex items-start gap-3">
         <div className="w-3 h-3 rounded-full mt-1 shrink-0" style={{ backgroundColor: p.color }} />
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold text-navy-900 truncate">{p.name}</div>
-          {p.description && <div className="text-[11px] text-navy-500 mt-0.5 truncate">{p.description}</div>}
+          <div className="text-sm font-bold text-navy-900 truncate" title={p.name}>{p.name}</div>
+          {p.description && <div className="text-[11px] text-navy-500 mt-0.5 truncate" title={p.description}>{p.description}</div>}
         </div>
         <button
           onClick={e => { e.stopPropagation(); onShare(); }}

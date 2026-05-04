@@ -371,8 +371,8 @@ function DetailPanel({ contact, interactions, loadingInteractions, onEdit }: { c
                     <Icon size={12} className={kind.fg} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-semibold text-navy-800 truncate">{i.summary}</div>
-                    <div className="text-[10px] text-navy-500 font-mono mt-0.5">{relTime(i.occurred_at).toUpperCase()}</div>
+                    <div className="text-[12px] font-semibold text-navy-800 truncate" title={i.summary}>{i.summary}</div>
+                    <div className="text-[10px] text-navy-500 mt-0.5">{relTime(i.occurred_at)}</div>
                   </div>
                 </div>
               );

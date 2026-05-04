@@ -16,6 +16,7 @@ import ProjectsView from "./ProjectsView";
 import LibraryView from "./LibraryView";
 import NotificationsView from "./NotificationsView";
 import { cn } from "../lib/cn";
+import { formatDue } from "../lib/date";
 import { ToastProvider } from "./shared/Toast";
 import type { User } from "../lib/types";
 
@@ -334,7 +335,7 @@ function Dashboard({ user, setView }: { user: User; setView: (v: string) => void
                 {new Date(e.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-navy-900 truncate">{e.title}</div>
+                <div className="text-[13px] font-semibold text-navy-900 truncate" title={e.title}>{e.title}</div>
                 {e.location && <div className="text-[11px] text-navy-500">{e.location}</div>}
               </div>
               <div className={eventTypeBadge(e.event_type)}>{e.event_type}</div>
@@ -350,14 +351,18 @@ function Dashboard({ user, setView }: { user: User; setView: (v: string) => void
                 t.priority === "high" ? "bg-red-500" : "bg-amber-500"
               )} />
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-navy-900 truncate">{t.title}</div>
+                <div className="text-[13px] font-medium text-navy-900 truncate" title={t.title}>{t.title}</div>
                 {t.project_name && <div className="text-[11px] text-navy-500">{t.project_name}</div>}
               </div>
-              {t.due_at && (
-                <div className="text-[11px] text-navy-500 font-mono">
-                  {new Date(t.due_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </div>
-              )}
+              {t.due_at && (() => {
+                const label = formatDue(t.due_at);
+                const overdue = label === "Overdue";
+                return (
+                  <div className={cn("text-[11px] shrink-0", overdue ? "text-red-500 font-semibold" : "text-navy-500 font-mono")}>
+                    {label}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </DashWidget>
@@ -365,9 +370,13 @@ function Dashboard({ user, setView }: { user: User; setView: (v: string) => void
         <DashWidget title="Unread Emails" icon={Inbox} count={data.unreadThreads.length} emptyText="Inbox zero — connect an account in Settings" onMore={data.unreadThreads.length > 5 ? () => setView("inbox") : undefined}>
           {data.unreadThreads.slice(0, 5).map((t: any) => (
             <div key={t.id} className="py-2 border-b border-navy-100">
-              <div className="flex justify-between items-center">
-                <div className="text-[13px] font-semibold text-navy-900 truncate flex-1">{t.subject}</div>
-                <span className="text-[11px] text-navy-500 ml-2 whitespace-nowrap">{t.unread_count}</span>
+              <div className="flex justify-between items-center gap-2">
+                <div className="text-[13px] font-semibold text-navy-900 truncate flex-1" title={t.subject}>{t.subject}</div>
+                {t.unread_count > 0 && (
+                  <span className="min-w-[18px] h-[18px] bg-blue-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center px-1 shrink-0">
+                    {t.unread_count}
+                  </span>
+                )}
               </div>
               {t.ai_summary && (
                 <div className="text-[11px] text-blue-600 mt-0.5 flex items-center gap-1">
