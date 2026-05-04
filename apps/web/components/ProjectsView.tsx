@@ -4,6 +4,7 @@ import {
   Plus, X, Sparkles, ArrowUp, ArrowRight, ArrowDown, CheckCircle2, Circle,
   Share2, Link2, Copy, Check, Trash2, Eye, EyeOff, MessageSquare,
   FileText, ChevronLeft, ExternalLink, Send, Users, FolderOpen, PenLine,
+  Pencil, Archive,
 } from "lucide-react";
 import DocumentEditor from "./shared/DocumentEditor";
 import { cn } from "../lib/cn";
@@ -191,6 +192,7 @@ export default function ProjectsView() {
           project={selected}
           onBack={() => { setSelected(null); load(); }}
           onShare={() => setSharePanel(selected)}
+          onUpdated={(updated) => setSelected(updated)}
         />
       ) : (
         <>
@@ -295,7 +297,11 @@ function ProjectCard({ project: p, onClick, onShare }: { project: Project; onCli
 /*  ProjectDetail — tasks with visibility toggles                      */
 /* ------------------------------------------------------------------ */
 
-function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack: () => void; onShare: () => void }) {
+function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: {
+  project: Project; onBack: () => void; onShare: () => void;
+  onUpdated?: (p: Project) => void;
+}) {
+  const [project, setProject] = useState(initialProject);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
@@ -309,6 +315,8 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
   const [deleteDocTarget, setDeleteDocTarget] = useState<Document | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -429,19 +437,56 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
         </button>
         <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
         <h2 className="text-xl font-extrabold text-navy-900 m-0">{project.name}</h2>
+        <button
+          onClick={() => setEditingProject(true)}
+          className="bg-transparent border-none cursor-pointer p-1.5 text-navy-400 rounded-lg hover:text-blue-500 hover:bg-blue-50 transition-all"
+          title="Edit project"
+        >
+          <Pencil size={14} />
+        </button>
         <div className="ml-auto flex gap-2">
-          <button
-            onClick={onShare}
-            className="bg-navy-50 text-navy-700 border border-navy-200 px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit] hover:bg-navy-100 transition-colors"
-          >
-            <Share2 size={12} /> Share
-          </button>
-          <button
-            onClick={() => setShowNew(true)}
-            className="bg-blue-500 text-white border-none px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit] hover:bg-blue-600 transition-all"
-          >
-            <Plus size={12} /> New task
-          </button>
+          {confirmingArchive ? (
+            <>
+              <span className="text-[12px] text-navy-600 self-center">Archive this project?</span>
+              <button
+                onClick={async () => {
+                  await fetch(`/api/projects/${project.id}`, { method: "DELETE", credentials: "include" });
+                  onBack();
+                }}
+                className="bg-red-600 text-white border-none px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setConfirmingArchive(false)}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setConfirmingArchive(true)}
+                className="bg-navy-50 text-navy-500 border border-navy-200 px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit] hover:bg-navy-100 transition-colors"
+                title="Archive project"
+              >
+                <Archive size={12} /> Archive
+              </button>
+              <button
+                onClick={onShare}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                <Share2 size={12} /> Share
+              </button>
+              <button
+                onClick={() => setShowNew(true)}
+                className="bg-blue-500 text-white border-none px-3 py-2 rounded-lg text-[12px] font-semibold cursor-pointer flex items-center gap-1.5 font-[inherit] hover:bg-blue-600 transition-all"
+              >
+                <Plus size={12} /> New task
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -801,8 +846,19 @@ function ProjectDetail({ project, onBack, onShare }: { project: Project; onBack:
           initialTitle={editingDoc === "new" ? undefined : editingDoc.title}
           projectId={project.id}
           onClose={() => setEditingDoc(null)}
-          onSaved={() => { setEditingDoc(null); load(); }}
-          onDeleted={() => load()}
+          onSaved={() => load()}
+          onDeleted={() => { setEditingDoc(null); load(); }}
+        />
+      )}
+      {editingProject && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setEditingProject(false)}
+          onSaved={(updated) => {
+            setProject(updated);
+            onUpdated?.(updated);
+            setEditingProject(false);
+          }}
         />
       )}
     </div>
@@ -1233,6 +1289,121 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
             </div>
           </div>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  EditProjectModal                                                   */
+/* ------------------------------------------------------------------ */
+
+const PRESET_COLORS = [
+  "#3b82f6", "#6366f1", "#8b5cf6", "#ec4899",
+  "#f59e0b", "#10b981", "#ef4444", "#64748b",
+];
+
+function EditProjectModal({ project, onClose, onSaved }: {
+  project: Project; onClose: () => void; onSaved: (updated: Project) => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description || "");
+  const [stage, setStage] = useState(project.stage);
+  const [dueDate, setDueDate] = useState(project.due_date ? project.due_date.slice(0, 10) : "");
+  const [color, setColor] = useState(project.color);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  async function save() {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          stage,
+          due_date: dueDate || null,
+          color,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) { toast("error", d.error || "Failed to save"); return; }
+      onSaved(d.project);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="px-5 py-4 border-b border-navy-200 flex items-center">
+        <h3 className="m-0 text-base font-bold text-navy-900">Edit project</h3>
+        <button onClick={onClose} className="ml-auto bg-transparent border-none text-navy-500 cursor-pointer p-1">
+          <X size={16} />
+        </button>
+      </div>
+      <div className="p-5 flex flex-col gap-3">
+        <TextInput label="Project name *" value={name} onChange={setName} />
+        <div>
+          <div className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-[5px]">Description</div>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={3}
+            placeholder="What is this project about?"
+            className="w-full px-[11px] py-2 text-[13px] border border-navy-200 rounded-lg outline-none font-[inherit] text-navy-900 bg-white box-border resize-y"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <SelectInput label="Stage" value={stage} onChange={setStage}
+            options={[["backlog","Backlog"],["discovery","Discovery"],["in_progress","In Progress"],["review","Review"],["done","Done"]]} />
+          <div>
+            <div className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-[5px]">Due date</div>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full px-[11px] py-2 text-[13px] border border-navy-200 rounded-lg outline-none font-[inherit] text-navy-900 bg-white box-border"
+            />
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold text-navy-600 uppercase tracking-wide mb-[5px]">Color</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {PRESET_COLORS.map(c => (
+              <button
+                key={c}
+                onClick={() => setColor(c)}
+                className={cn(
+                  "w-7 h-7 rounded-full border-2 cursor-pointer transition-transform hover:scale-110",
+                  color === c ? "border-navy-900 scale-110" : "border-transparent"
+                )}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+            <input
+              type="color"
+              value={color}
+              onChange={e => setColor(e.target.value)}
+              className="w-7 h-7 rounded-full border border-navy-200 cursor-pointer p-0 bg-transparent"
+              title="Custom color"
+            />
+          </div>
+        </div>
+        <button
+          onClick={save}
+          disabled={!name.trim() || saving}
+          className={cn(
+            "bg-blue-600 text-white border-none px-4 py-2.5 rounded-lg text-[13px] font-semibold font-[inherit] mt-1",
+            !name.trim() || saving ? "opacity-60 cursor-wait" : "cursor-pointer",
+          )}
+        >
+          {saving ? "Saving..." : "Save changes"}
+        </button>
       </div>
     </Modal>
   );

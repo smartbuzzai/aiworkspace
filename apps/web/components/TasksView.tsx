@@ -114,14 +114,32 @@ export default function TasksView() {
     load();
   }
 
-  const filtered = tasks.filter(t => {
-    if (statusFilter === "active" && (t.status === "done" || t.status === "cancelled")) return false;
-    if (statusFilter === "done" && t.status !== "done") return false;
-    if (statusFilter === "cancelled" && t.status !== "cancelled") return false;
-    if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
-    if (projectFilter !== "all" && t.project_id !== projectFilter) return false;
-    return true;
-  });
+  const PRIORITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
+  const filtered = tasks
+    .filter(t => {
+      if (statusFilter === "active" && (t.status === "done" || t.status === "cancelled")) return false;
+      if (statusFilter === "done" && t.status !== "done") return false;
+      if (statusFilter === "cancelled" && t.status !== "cancelled") return false;
+      if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
+      if (projectFilter !== "all" && t.project_id !== projectFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const now = Date.now();
+      const aOverdue = a.due_at && new Date(a.due_at).getTime() < now;
+      const bOverdue = b.due_at && new Date(b.due_at).getTime() < now;
+      // Overdue first
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      // Both have due dates — sort ascending
+      if (a.due_at && b.due_at) return new Date(a.due_at).getTime() - new Date(b.due_at).getTime();
+      // Due date before no due date
+      if (a.due_at && !b.due_at) return -1;
+      if (!a.due_at && b.due_at) return 1;
+      // Fall back to priority
+      return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+    });
 
   const counts = {
     active: tasks.filter(t => t.status !== "done" && t.status !== "cancelled").length,
