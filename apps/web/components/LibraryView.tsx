@@ -114,6 +114,7 @@ export default function LibraryView() {
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<FolderItem | null>(null);
 
   // New folder creation
   const [showNewFolder, setShowNewFolder] = useState(false);
@@ -262,11 +263,12 @@ export default function LibraryView() {
     }
   }
 
-  async function deleteFolder(folderId: string) {
-    if (!confirm("Delete this folder? Files inside will be moved to the root.")) return;
+  async function confirmDeleteFolder() {
+    if (!deleteFolderTarget) return;
     try {
-      const r = await fetch(`/api/files/folders/${folderId}`, { method: "DELETE", credentials: "include" });
+      const r = await fetch(`/api/files/folders/${deleteFolderTarget.id}`, { method: "DELETE", credentials: "include" });
       if (!r.ok) throw new Error();
+      setDeleteFolderTarget(null);
       load();
     } catch {
       toast("error", "Failed to delete folder.");
@@ -482,7 +484,17 @@ export default function LibraryView() {
 
       {/* Folder + file list */}
       {loading ? (
-        <div className="text-navy-500 text-[13px] p-6">Loading&hellip;</div>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-3">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="bg-white border border-navy-200 rounded-[14px] p-4 flex gap-3.5 animate-pulse">
+              <div className="w-[46px] h-[46px] rounded-xl bg-navy-100 shrink-0" />
+              <div className="flex-1 min-w-0 space-y-2 py-1">
+                <div className="h-3.5 bg-navy-100 rounded w-3/4" />
+                <div className="h-2.5 bg-navy-100 rounded w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : folders.length === 0 && filteredFiles.length === 0 ? (
         <div className="bg-white border border-navy-200 rounded-xl p-10 text-center text-navy-500 text-sm">
           {q ? "No files match that search." : "No files uploaded yet. Drag & drop or click Upload."}
@@ -494,7 +506,7 @@ export default function LibraryView() {
               key={folder.id}
               folder={folder}
               onClick={() => navigateToFolder(folder)}
-              onDelete={() => deleteFolder(folder.id)}
+              onDelete={() => setDeleteFolderTarget(folder)}
               onRename={(name) => renameFolder(folder.id, name)}
             />
           ))}
@@ -585,7 +597,7 @@ export default function LibraryView() {
         </Modal>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete file confirmation modal */}
       {deleteTarget && (
         <Modal onClose={() => setDeleteTarget(null)}>
           <div className="p-6">
@@ -602,6 +614,32 @@ export default function LibraryView() {
               </button>
               <button
                 onClick={confirmDelete}
+                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Delete folder confirmation modal */}
+      {deleteFolderTarget && (
+        <Modal onClose={() => setDeleteFolderTarget(null)}>
+          <div className="p-6">
+            <h3 className="text-base font-bold text-navy-900 mb-2">Delete folder</h3>
+            <p className="text-sm text-navy-600 mb-6">
+              Delete <span className="font-semibold">{deleteFolderTarget.name}</span>? Files inside will be moved to the root.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteFolderTarget(null)}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteFolder}
                 className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
               >
                 Delete

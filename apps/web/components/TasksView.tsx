@@ -100,12 +100,13 @@ export default function TasksView() {
       t.id === task.id ? { ...t, status: next as Task["status"], completed_at: next === "done" ? new Date().toISOString() : null } : t
     ));
     try {
-      await fetch(`/api/tasks/${task.id}`, {
+      const r = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: next }),
       });
+      if (!r.ok) throw new Error();
       toast("success", next === "done" ? "Task completed!" : "Task reopened.");
     } catch {
       setTasks(prev => prev.map(t =>
@@ -218,7 +219,17 @@ export default function TasksView() {
 
       {/* Task list */}
       {loading ? (
-        <div className="text-navy-500 text-[13px] p-6">Loading&hellip;</div>
+        <div className="flex flex-col gap-1.5">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="bg-white border border-navy-200 rounded-xl px-4 py-3 flex items-center gap-3 animate-pulse">
+              <div className="w-5 h-5 rounded-full bg-navy-100 shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 bg-navy-100 rounded w-2/5" />
+                <div className="h-2.5 bg-navy-100 rounded w-1/4" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="bg-white border border-navy-200 rounded-xl p-10 text-center text-navy-500 text-sm">
           {tasks.length === 0 ? 'No tasks yet. Click "New task" to create one.' : "No tasks match the current filters."}

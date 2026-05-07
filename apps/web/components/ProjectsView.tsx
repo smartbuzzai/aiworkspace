@@ -222,7 +222,27 @@ export default function ProjectsView() {
           </div>
 
           {loading ? (
-            <div className="text-navy-500 text-[13px] p-6">Loading...</div>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="bg-white border border-navy-200 rounded-[14px] p-4 animate-pulse">
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full mt-1 bg-navy-100 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3.5 bg-navy-100 rounded w-2/3" />
+                      <div className="h-2.5 bg-navy-100 rounded w-1/3" />
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <div className="flex-1 bg-navy-100 rounded-full h-1.5" />
+                    <div className="h-2.5 w-6 bg-navy-100 rounded" />
+                  </div>
+                  <div className="mt-2 flex gap-3">
+                    <div className="h-2.5 w-14 bg-navy-100 rounded" />
+                    <div className="h-2.5 w-10 bg-navy-100 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : projects.length === 0 ? (
             <div className="bg-white border border-navy-200 rounded-xl p-10 text-center">
               <p className="text-navy-500 text-sm mb-4">No projects yet.</p>
@@ -352,6 +372,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [editingProject, setEditingProject] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
+  const [unlinkTarget, setUnlinkTarget] = useState<string | null>(null);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -527,7 +548,23 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
       </div>
 
       {loading ? (
-        <div className="text-navy-500 text-[13px] p-6">Loading...</div>
+        <div className="grid grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="rounded-xl p-3 bg-navy-50 min-h-[300px] animate-pulse">
+              <div className="flex items-center gap-2 mb-3 px-1">
+                <div className="w-2 h-2 rounded-full bg-navy-200" />
+                <div className="h-2.5 w-16 bg-navy-200 rounded" />
+                <div className="ml-auto w-5 h-5 rounded-full bg-navy-200" />
+              </div>
+              {[1, 2].map(j => (
+                <div key={j} className="bg-white rounded-[10px] p-3 mb-2 border border-navy-200">
+                  <div className="h-3 bg-navy-100 rounded w-3/4 mb-2" />
+                  <div className="h-2.5 bg-navy-100 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {columns.map(col => {
@@ -681,7 +718,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
                           {file.client_visible ? <Eye size={14} /> : <EyeOff size={14} />}
                         </button>
                         <button
-                          onClick={() => confirm("Remove this file from the project?") && unlinkFile(file.id)}
+                          onClick={() => setUnlinkTarget(file.id)}
                           className="bg-transparent border-none cursor-pointer p-1 text-navy-300 hover:text-red-500 rounded-md opacity-0 group-hover:opacity-100 transition-all"
                           title="Remove from project"
                         >
@@ -696,6 +733,30 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
           </div>
         )}
       </div>
+
+      {/* Unlink file confirmation modal */}
+      {unlinkTarget && (
+        <Modal onClose={() => setUnlinkTarget(null)}>
+          <div className="p-6">
+            <h3 className="text-base font-bold text-navy-900 mb-2">Remove file</h3>
+            <p className="text-sm text-navy-600 mb-6">Remove this file from the project? The file stays in your Library.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setUnlinkTarget(null)}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { unlinkFile(unlinkTarget); setUnlinkTarget(null); }}
+                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* File picker modal */}
       {showFilePicker && (
@@ -918,6 +979,8 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   const { toast } = useToast();
 
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<string | null>(null);
+  const [revokeShareTarget, setRevokeShareTarget] = useState<string | null>(null);
 
   // New share form
   const [clientName, setClientName] = useState("");
@@ -980,7 +1043,6 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   }
 
   async function removeMember(userId: string) {
-    if (!confirm("Remove this member from the project?")) return;
     await fetch(`/api/projects/${project.id}/members/${userId}`, {
       method: "DELETE", credentials: "include",
     });
@@ -1024,7 +1086,6 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   }
 
   async function revokeShare(shareId: string) {
-    if (!confirm("Revoke this client's portal access? Their link will stop working immediately.")) return;
     await fetch(`/api/projects/${project.id}/shares/${shareId}`, {
       method: "DELETE", credentials: "include",
     });
@@ -1069,6 +1130,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
   ];
 
   return (
+    <>
     <Modal onClose={onClose}>
       <div className="px-5 py-4 border-b border-navy-200 flex items-center gap-3">
         <Share2 size={16} className="text-blue-500" />
@@ -1103,7 +1165,17 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
 
       <div className="p-5 max-h-[60vh] overflow-auto">
         {loading ? (
-          <div className="text-navy-500 text-[13px] text-center py-4">Loading...</div>
+          <div className="flex flex-col gap-2 animate-pulse">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3 p-3 border border-navy-200 rounded-xl bg-navy-50">
+                <div className="w-8 h-8 rounded-full bg-navy-200 shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 bg-navy-100 rounded w-1/3" />
+                  <div className="h-2.5 bg-navy-100 rounded w-1/4" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : tab === "members" ? (
           <div className="flex flex-col gap-4">
             {/* Invite form */}
@@ -1164,7 +1236,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
                       <option value="viewer">Viewer</option>
                     </select>
                     <button
-                      onClick={() => removeMember(m.id)}
+                      onClick={() => setRemoveMemberTarget(m.id)}
                       className="bg-transparent border-none cursor-pointer p-1 text-navy-400 hover:text-red-500 rounded-lg"
                       title="Remove member"
                     >
@@ -1245,7 +1317,7 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
                           {copiedToken === share.token ? <Check size={13} /> : <Copy size={13} />}
                         </button>
                         <button
-                          onClick={() => revokeShare(share.id)}
+                          onClick={() => setRevokeShareTarget(share.id)}
                           className="bg-transparent border-none cursor-pointer p-1.5 text-navy-400 hover:text-red-500 rounded-lg"
                           title="Revoke access"
                         >
@@ -1338,6 +1410,53 @@ function ShareModal({ project, onClose }: { project: Project; onClose: () => voi
         )}
       </div>
     </Modal>
+
+    {removeMemberTarget && (
+      <Modal onClose={() => setRemoveMemberTarget(null)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Remove member</h3>
+          <p className="text-sm text-navy-600 mb-6">Remove this member from the project? They will lose access immediately.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setRemoveMemberTarget(null)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { removeMember(removeMemberTarget); setRemoveMemberTarget(null); }}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+
+    {revokeShareTarget && (
+      <Modal onClose={() => setRevokeShareTarget(null)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Revoke portal access</h3>
+          <p className="text-sm text-navy-600 mb-6">Revoke this client's access? Their link will stop working immediately.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setRevokeShareTarget(null)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { revokeShare(revokeShareTarget); setRevokeShareTarget(null); }}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+  </>
   );
 }
 

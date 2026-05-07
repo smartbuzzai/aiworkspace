@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Sparkles, Reply, Archive, Star, Mail, Trash2, Send, X, Search, Plus, Pencil } from "lucide-react";
 import { cn } from "../lib/cn";
 import { useToast } from "./shared/Toast";
+import Modal from "./shared/Modal";
 
 /* ------------------------------------------------------------------ */
 /*  TypeScript interfaces                                              */
@@ -291,6 +292,8 @@ export default function InboxView() {
                 setSelected(null);
                 setShowDetail(false);
                 toast("success", "Thread archived.");
+              } else {
+                toast("error", "Failed to archive thread.");
               }
             }}
             onDelete={async (id: string) => {
@@ -300,6 +303,8 @@ export default function InboxView() {
                 setSelected(null);
                 setShowDetail(false);
                 toast("success", "Thread deleted.");
+              } else {
+                toast("error", "Failed to delete thread.");
               }
             }}
             onSent={() => openThread(selected)}
@@ -330,6 +335,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
   const [replyOpen, setReplyOpen] = useState<boolean>(false);
   const [replyBody, setReplyBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { toast } = useToast();
 
   async function handleSend() {
@@ -398,9 +404,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
         </IconBtn>
         <IconBtn
           title="Delete"
-          onClick={() => {
-            if (confirm("Delete this thread?")) onDelete?.(thread.id);
-          }}
+          onClick={() => setConfirmingDelete(true)}
         >
           <Trash2 size={15} />
         </IconBtn>
@@ -506,6 +510,31 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
           </div>
         </div>
       )}
+
+      {confirmingDelete && (
+        <Modal onClose={() => setConfirmingDelete(false)}>
+          <div className="p-6">
+            <h3 className="text-base font-bold text-navy-900 mb-2">Delete thread</h3>
+            <p className="text-sm text-navy-600 mb-6">
+              Delete <span className="font-semibold">{thread.subject || "(no subject)"}</span>? This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmingDelete(false)}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirmingDelete(false); onDelete?.(thread.id); }}
+                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }
@@ -559,11 +588,15 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
   const [body, setBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const [showCc, setShowCc] = useState<boolean>(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const { toast } = useToast();
 
   function handleDiscard() {
-    if ((to.trim() || subject.trim() || body.trim()) && !confirm("Discard this draft?")) return;
-    onClose();
+    if (to.trim() || subject.trim() || body.trim()) {
+      setConfirmingDiscard(true);
+    } else {
+      onClose();
+    }
   }
 
   async function handleSend() {
@@ -597,6 +630,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
   }
 
   return (
+    <>
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center z-[100] p-4"
       onClick={handleDiscard}
@@ -707,6 +741,33 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
         </div>
       </div>
     </div>
+
+    {confirmingDiscard && (
+      <div
+        className="fixed inset-0 bg-[rgba(10,15,30,0.55)] z-[110] flex items-center justify-center p-5 backdrop-blur-sm"
+        onClick={() => setConfirmingDiscard(false)}
+      >
+        <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl p-6 max-w-[400px] w-full border border-navy-200">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Discard draft?</h3>
+          <p className="text-sm text-navy-600 mb-6">Your message will be lost.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmingDiscard(false)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Keep editing
+            </button>
+            <button
+              onClick={onClose}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }
 

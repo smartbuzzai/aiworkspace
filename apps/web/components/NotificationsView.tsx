@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Bell, Check, CheckCheck, X } from "lucide-react";
 import { cn } from "../lib/cn";
 import { relTime } from "../lib/date";
+import { useToast } from "./shared/Toast";
+import Modal from "./shared/Modal";
 
 interface Notification {
   id: string;
@@ -20,6 +22,8 @@ export default function NotificationsView() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [confirmingMarkAll, setConfirmingMarkAll] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => { load(); }, []);
 
@@ -56,20 +60,26 @@ export default function NotificationsView() {
       });
   }
 
+  const unreadCount = notifications.filter(n => !n.read_at).length;
+
   function markAllRead() {
+    if (unreadCount === 0) return;
+    setConfirmingMarkAll(true);
+  }
+
+  function confirmMarkAllRead() {
     const now = new Date().toISOString();
     const unread = notifications.filter(n => !n.read_at);
-    if (unread.length === 0) return;
-    if (unread.length > 5 && !confirm(`Mark all ${unread.length} notifications as read?`)) return;
+    setConfirmingMarkAll(false);
     setNotifications(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? now })));
+    toast("success", `${unread.length} notification${unread.length !== 1 ? "s" : ""} marked as read.`);
     Promise.all(
       unread.map(n => fetch(`/api/push/notifications/${n.id}/read`, { method: "POST", credentials: "include" }))
     ).catch(() => load());
   }
 
-  const unreadCount = notifications.filter(n => !n.read_at).length;
-
   return (
+    <>
     <div className="flex flex-col gap-4">
       {/* Header bar */}
       <div className="bg-white border border-navy-200 rounded-xl p-3.5 flex gap-2.5 items-center">
@@ -160,5 +170,31 @@ export default function NotificationsView() {
         </div>
       )}
     </div>
+
+    {confirmingMarkAll && (
+      <Modal onClose={() => setConfirmingMarkAll(false)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Mark all as read</h3>
+          <p className="text-sm text-navy-600 mb-6">
+            Mark all {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""} as read?
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmingMarkAll(false)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmMarkAllRead}
+              className="bg-blue-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-blue-700 transition-colors"
+            >
+              Mark all read
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+  </>
   );
 }

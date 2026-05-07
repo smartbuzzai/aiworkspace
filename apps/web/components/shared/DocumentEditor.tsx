@@ -18,6 +18,7 @@ import {
   Link2, Link2Off, Underline as UnderlineIcon, Highlighter, ListChecks, FileCode,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import Modal from "./Modal";
 
 const lowlight = createLowlight(common);
 
@@ -74,6 +75,7 @@ export default function DocumentEditor({
   const [folders, setFolders] = useState<Folder[]>([]);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [documentLoaded, setDocumentLoaded] = useState(!docId);
@@ -229,7 +231,8 @@ export default function DocumentEditor({
 
   function handleClose() {
     if (isDirtyRef.current || isSavingRef.current) {
-      if (!confirm("Changes are still saving — close anyway? You may lose recent edits.")) return;
+      setConfirmingClose(true);
+      return;
     }
     onClose();
   }
@@ -566,6 +569,29 @@ export default function DocumentEditor({
           )}
         </div>
       </div>
+
+      {confirmingClose && (
+        <Modal onClose={() => setConfirmingClose(false)}>
+          <div className="p-6">
+            <h3 className="text-base font-bold text-navy-900 mb-2">Unsaved changes</h3>
+            <p className="text-sm text-navy-600 mb-6">Changes are still saving — close anyway? You may lose recent edits.</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmingClose(false)}
+                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+              >
+                Keep editing
+              </button>
+              <button
+                onClick={onClose}
+                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+              >
+                Close anyway
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

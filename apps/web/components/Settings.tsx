@@ -15,6 +15,7 @@ import {
 import { cn } from "../lib/cn";
 import { relTime, formatDue } from "../lib/date";
 import { useToast } from "./shared/Toast";
+import Modal from "./shared/Modal";
 import type { User } from "../lib/types";
 
 // ─── Interfaces ──────────────────────────────────────────────
@@ -124,6 +125,7 @@ function EmailAccountsSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState<string>("");
   const [savingLabel, setSavingLabel] = useState<boolean>(false);
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -139,7 +141,6 @@ function EmailAccountsSection() {
   useEffect(() => { refresh(); }, []);
 
   async function remove(id: string) {
-    if (!confirm("Remove this email account? Past messages stay in the database.")) return;
     await fetch(`/api/accounts/${id}`, { method: "DELETE", credentials: "include" });
     refresh();
   }
@@ -172,13 +173,25 @@ function EmailAccountsSection() {
   }
 
   return (
+    <>
     <Card title="Email accounts" action={
       <button onClick={() => setShowAdd(true)} className={btnPrimary}>
         <Plus size={13} /> Add account
       </button>
     }>
       {loading ? (
-        <div className="text-navy-500 text-[13px]">Loading…</div>
+        <div className="flex flex-col gap-2">
+          {[1, 2].map(i => (
+            <div key={i} className="flex items-center gap-3 p-3.5 border border-navy-200 rounded-[10px] bg-navy-50 animate-pulse">
+              <div className="w-9 h-9 rounded-[9px] bg-navy-200 shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 bg-navy-100 rounded w-1/3" />
+                <div className="h-2.5 bg-navy-100 rounded w-1/4" />
+              </div>
+              <div className="w-6 h-6 rounded bg-navy-100" />
+            </div>
+          ))}
+        </div>
       ) : accounts.length === 0 ? (
         <EmptyState
           icon={Mail}
@@ -238,7 +251,7 @@ function EmailAccountsSection() {
                     : "Waiting for first sync"}
                 </div>
               </div>
-              <button onClick={() => remove(a.id)} className="bg-transparent border-none p-2 text-navy-500 cursor-pointer">
+              <button onClick={() => setRemoveTarget(a.id)} className="bg-transparent border-none p-2 text-navy-500 cursor-pointer hover:text-red-500">
                 <Trash2 size={15} />
               </button>
             </div>
@@ -248,6 +261,30 @@ function EmailAccountsSection() {
 
       {showAdd && <AddAccountModal onClose={() => setShowAdd(false)} onSaved={() => { refresh(); setShowAdd(false); }} />}
     </Card>
+
+    {removeTarget && (
+      <Modal onClose={() => setRemoveTarget(null)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Remove email account</h3>
+          <p className="text-sm text-navy-600 mb-6">Remove this account? Past messages stay in the database.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setRemoveTarget(null)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { remove(removeTarget); setRemoveTarget(null); }}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -552,6 +589,7 @@ function InvitesSection() {
   const [maxUses, setMaxUses] = useState(1);
   const [expDays, setExpDays] = useState(7);
   const [copied, setCopied] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const { toast } = useToast();
 
   async function refresh() {
@@ -604,7 +642,6 @@ function InvitesSection() {
   }
 
   async function revoke(id: string) {
-    if (!confirm("Revoke this invite code? Anyone who hasn't used it yet won't be able to.")) return;
     await fetch(`/api/invites/${id}`, { method: "DELETE", credentials: "include" });
     refresh();
   }
@@ -617,6 +654,7 @@ function InvitesSection() {
   }
 
   return (
+    <>
     <Card title="Invite codes" action={
       <div className="text-[11px] text-navy-500">
         Share codes to let others sign up
@@ -671,7 +709,17 @@ function InvitesSection() {
 
       {/* Invite list */}
       {loading ? (
-        <div className="text-navy-500 text-[13px]">Loading&hellip;</div>
+        <div className="flex flex-col gap-2">
+          {[1, 2].map(i => (
+            <div key={i} className="flex items-center gap-3 p-3.5 border border-navy-200 rounded-[10px] bg-navy-50 animate-pulse">
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 bg-navy-100 rounded w-1/4" />
+                <div className="h-2.5 bg-navy-100 rounded w-1/3" />
+              </div>
+              <div className="w-6 h-6 rounded bg-navy-100" />
+            </div>
+          ))}
+        </div>
       ) : invites.length === 0 ? (
         <EmptyState
           icon={Ticket}
@@ -720,7 +768,7 @@ function InvitesSection() {
                     )}
                   </div>
                 </div>
-                <button onClick={() => revoke(inv.id)} className="bg-transparent border-none p-2 text-navy-500 cursor-pointer hover:text-red-500" title="Revoke">
+                <button onClick={() => setRevokeTarget(inv.id)} className="bg-transparent border-none p-2 text-navy-500 cursor-pointer hover:text-red-500" title="Revoke">
                   <Trash2 size={14} />
                 </button>
               </div>
@@ -729,6 +777,30 @@ function InvitesSection() {
         </div>
       )}
     </Card>
+
+    {revokeTarget && (
+      <Modal onClose={() => setRevokeTarget(null)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Revoke invite code</h3>
+          <p className="text-sm text-navy-600 mb-6">Revoke this invite? Anyone who hasn't used it yet won't be able to.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setRevokeTarget(null)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { revoke(revokeTarget); setRevokeTarget(null); }}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -736,6 +808,7 @@ function InvitesSection() {
 function SessionsSection() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [confirmingRevokeAll, setConfirmingRevokeAll] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -756,7 +829,6 @@ function SessionsSection() {
   }
 
   async function revokeAll() {
-    if (!confirm("Sign out of all devices? You will need to sign in again.")) return;
     await fetch("/api/auth/logout-all", { method: "POST", credentials: "include" });
     window.location.reload();
   }
@@ -775,15 +847,27 @@ function SessionsSection() {
   }
 
   return (
+    <>
     <Card title="Active sessions" action={
       sessions.length > 1 ? (
-        <button onClick={revokeAll} className={cn(btnSecondary, "text-red-500 border-red-500/30")}>
+        <button onClick={() => setConfirmingRevokeAll(true)} className={cn(btnSecondary, "text-red-500 border-red-500/30")}>
           <LogOut size={12} /> Sign out all
         </button>
       ) : undefined
     }>
       {loading ? (
-        <div className="text-navy-500 text-[13px]">Loading…</div>
+        <div className="flex flex-col gap-2">
+          {[1, 2].map(i => (
+            <div key={i} className="flex items-center gap-3 p-3.5 rounded-[10px] border border-navy-200 bg-navy-50 animate-pulse">
+              <div className="w-9 h-9 rounded-[9px] bg-navy-200 shrink-0" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3.5 bg-navy-100 rounded w-1/4" />
+                <div className="h-2.5 bg-navy-100 rounded w-2/5" />
+                <div className="h-2 bg-navy-100 rounded w-1/5" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : sessions.length === 0 ? (
         <div className="text-navy-500 text-[13px]">No active sessions.</div>
       ) : (
@@ -830,6 +914,30 @@ function SessionsSection() {
         </div>
       )}
     </Card>
+
+    {confirmingRevokeAll && (
+      <Modal onClose={() => setConfirmingRevokeAll(false)}>
+        <div className="p-6">
+          <h3 className="text-base font-bold text-navy-900 mb-2">Sign out of all devices</h3>
+          <p className="text-sm text-navy-600 mb-6">You will be signed out everywhere and will need to sign in again.</p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmingRevokeAll(false)}
+              className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={revokeAll}
+              className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+            >
+              Sign out all
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 
