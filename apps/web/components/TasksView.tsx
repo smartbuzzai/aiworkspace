@@ -68,6 +68,7 @@ export default function TasksView() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Task | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => { load(); loadProjects(); }, []);
@@ -118,6 +119,7 @@ export default function TasksView() {
 
   async function confirmDelete() {
     if (!deleteTarget) return;
+    setDeleting(true);
     try {
       const r = await fetch(`/api/tasks/${deleteTarget.id}`, { method: "DELETE", credentials: "include" });
       if (!r.ok) throw new Error();
@@ -126,6 +128,8 @@ export default function TasksView() {
       load();
     } catch {
       toast("error", "Failed to delete task.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -258,7 +262,7 @@ export default function TasksView() {
       )}
 
       {deleteTarget && (
-        <Modal onClose={() => setDeleteTarget(null)}>
+        <Modal onClose={() => { if (!deleting) setDeleteTarget(null); }}>
           <div className="p-6">
             <h3 className="text-base font-bold text-navy-900 mb-2">Delete task</h3>
             <p className="text-sm text-navy-600 mb-6">
@@ -267,15 +271,17 @@ export default function TasksView() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+                disabled={deleting}
+                className={cn("bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors", deleting && "opacity-60 cursor-not-allowed")}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+                disabled={deleting}
+                className={cn("bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors", deleting && "opacity-60 cursor-not-allowed")}
               >
-                Delete
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>

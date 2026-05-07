@@ -539,7 +539,7 @@ function EventForm({
             disabled={saving || !form.title.trim()}
             className={cn(
               "px-[18px] py-[9px] rounded-lg text-[13px] font-semibold bg-blue-600 text-white border-none cursor-pointer font-sans",
-              (saving || !form.title.trim()) && "opacity-50"
+              (saving || !form.title.trim()) && "opacity-50 cursor-not-allowed"
             )}
           >
             {saving ? "Saving…" : saveLabel}

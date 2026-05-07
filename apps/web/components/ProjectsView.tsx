@@ -373,6 +373,7 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
   const [editingProject, setEditingProject] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [unlinkTarget, setUnlinkTarget] = useState<string | null>(null);
+  const [linking, setLinking] = useState<string | null>(null);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -404,12 +405,17 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
   }
 
   async function linkFile(fileId: string) {
-    await fetch(`/api/projects/${project.id}/files/${fileId}`, {
-      method: "POST", credentials: "include",
-    });
-    setShowFilePicker(false);
-    load();
-    toast("success", "File added to project");
+    setLinking(fileId);
+    try {
+      await fetch(`/api/projects/${project.id}/files/${fileId}`, {
+        method: "POST", credentials: "include",
+      });
+      setShowFilePicker(false);
+      load();
+      toast("success", "File added to project");
+    } finally {
+      setLinking(null);
+    }
   }
 
   async function unlinkFile(fileId: string) {
@@ -778,7 +784,8 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
                   <button
                     key={f.id}
                     onClick={() => linkFile(f.id)}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-navy-200 bg-white cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all text-left font-[inherit] w-full"
+                    disabled={linking !== null}
+                    className={cn("flex items-center gap-3 p-3 rounded-xl border border-navy-200 bg-white cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-all text-left font-[inherit] w-full", linking === f.id && "opacity-60 cursor-not-allowed")}
                   >
                     <FileText size={16} className="text-navy-400 shrink-0" />
                     <div className="flex-1 min-w-0">

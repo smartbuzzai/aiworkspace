@@ -51,7 +51,7 @@ interface ThreadDetailProps {
   isMobile: boolean;
   onStar: (id: string) => void;
   onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => void | Promise<void>;
   onSent: () => void;
 }
 
@@ -336,6 +336,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
   const [replyBody, setReplyBody] = useState<string>("");
   const [sending, setSending] = useState<boolean>(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   async function handleSend() {
@@ -502,7 +503,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
               title={!replyBody.trim() ? "Message required" : undefined}
               className={cn(
                 "px-4 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer font-[inherit] flex items-center gap-1.5",
-                (sending || !replyBody.trim()) && "opacity-50",
+                (sending || !replyBody.trim()) && "opacity-50 cursor-not-allowed",
               )}
             >
               <Send size={12} /> {sending ? "Sending…" : "Send"}
@@ -512,7 +513,7 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
       )}
 
       {confirmingDelete && (
-        <Modal onClose={() => setConfirmingDelete(false)}>
+        <Modal onClose={() => { if (!deleting) setConfirmingDelete(false); }}>
           <div className="p-6">
             <h3 className="text-base font-bold text-navy-900 mb-2">Delete thread</h3>
             <p className="text-sm text-navy-600 mb-6">
@@ -521,15 +522,17 @@ function ThreadDetail({ thread, messages, loadingMessages, onBack, isMobile, onS
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmingDelete(false)}
-                className="bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors"
+                disabled={deleting}
+                className={cn("bg-navy-50 text-navy-700 border border-navy-200 px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-navy-100 transition-colors", deleting && "opacity-60 cursor-not-allowed")}
               >
                 Cancel
               </button>
               <button
-                onClick={() => { setConfirmingDelete(false); onDelete?.(thread.id); }}
-                className="bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors"
+                onClick={async () => { setDeleting(true); try { await onDelete?.(thread.id); } finally { setDeleting(false); setConfirmingDelete(false); } }}
+                disabled={deleting}
+                className={cn("bg-red-600 text-white border-none px-4 py-2 rounded-lg text-xs font-semibold cursor-pointer font-[inherit] hover:bg-red-700 transition-colors", deleting && "opacity-60 cursor-not-allowed")}
               >
-                Delete
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
@@ -733,7 +736,7 @@ function ComposeModal({ accounts, onClose, onSent }: ComposeModalProps) {
             title={!to.trim() ? "Recipient required" : !subject.trim() ? "Subject required" : undefined}
             className={cn(
               "px-5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white border-none cursor-pointer flex items-center gap-1.5",
-              (sending || !to.trim() || !subject.trim()) && "opacity-50",
+              (sending || !to.trim() || !subject.trim()) && "opacity-50 cursor-not-allowed",
             )}
           >
             <Send size={12} /> {sending ? "Sending…" : "Send"}

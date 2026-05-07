@@ -546,12 +546,12 @@ function AddAccountModal({ onClose, onSaved }: AddAccountModalProps) {
           <div className="flex gap-2 mt-1">
             <button onClick={test} disabled={testing || saving || !canSave}
               title={!canSave ? "Fill in label and email address first" : undefined}
-              className={cn(btnSecondary, "flex-1 justify-center", (testing || saving || !canSave) && "opacity-60")}>
+              className={cn(btnSecondary, "flex-1 justify-center", (testing || saving || !canSave) && "opacity-60 cursor-not-allowed")}>
               {testing ? <RefreshCw size={13} className="animate-spin" /> : "Test connection"}
             </button>
             <button onClick={save} disabled={saving || testing || !canSave}
               title={!canSave ? "Fill in label and email address first" : undefined}
-              className={cn(btnPrimary, "flex-1 justify-center", (saving || testing || !canSave) && "opacity-60")}>
+              className={cn(btnPrimary, "flex-1 justify-center", (saving || testing || !canSave) && "opacity-60 cursor-not-allowed")}>
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
@@ -1023,7 +1023,7 @@ function PushSection() {
             </div>
           </div>
           <button onClick={subscribed ? disable : enable} disabled={working}
-            className={subscribed ? btnSecondary : btnPrimary}>
+            className={cn(subscribed ? btnSecondary : btnPrimary, working && "opacity-60 cursor-not-allowed")}>
             {working ? "…" : subscribed ? "Disable" : "Enable"}
           </button>
         </div>
