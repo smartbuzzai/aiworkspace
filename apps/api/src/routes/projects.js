@@ -6,6 +6,7 @@ import { queueClientNotify } from "../lib/notify.js";
 const projectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
   stage: z.enum(["backlog","discovery","in_progress","review","done"]).optional().default("backlog"),
   owner: z.string().optional().nullable(),
   due_date: z.string().optional().nullable(),

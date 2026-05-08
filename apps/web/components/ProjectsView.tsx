@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus, X, Sparkles, ArrowUp, ArrowRight, ArrowDown, CheckCircle2, Circle,
   Share2, Link2, Copy, Check, Trash2, Eye, EyeOff, MessageSquare,
@@ -22,6 +22,7 @@ interface Project {
   id: string;
   name: string;
   description: string | null;
+  notes: string | null;
   stage: string;
   progress: number;
   due_date: string | null;
@@ -374,6 +375,9 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [unlinkTarget, setUnlinkTarget] = useState<string | null>(null);
   const [linking, setLinking] = useState<string | null>(null);
+  const [notes, setNotes] = useState(initialProject.notes ?? "");
+  const [notesSaveStatus, setNotesSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -396,6 +400,27 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
   }, [project.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  function handleNotesChange(value: string) {
+    setNotes(value);
+    setNotesSaveStatus("saving");
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current);
+    notesTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch(`/api/projects/${project.id}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: value || null }),
+        });
+        setNotesSaveStatus("saved");
+        setTimeout(() => setNotesSaveStatus("idle"), 2000);
+      } catch {
+        toast("error", "Failed to save notes.");
+        setNotesSaveStatus("idle");
+      }
+    }, 1000);
+  }
 
   async function loadAvailable() {
     const r = await fetch(`/api/projects/${project.id}/available-files`, { credentials: "include" });
@@ -551,6 +576,22 @@ function ProjectDetail({ project: initialProject, onBack, onShare, onUpdated }: 
             </>
           )}
         </div>
+      </div>
+
+      {/* Notes */}
+      <div className="bg-white border border-navy-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-bold text-navy-600 uppercase tracking-wider">Notes</span>
+          {notesSaveStatus === "saving" && <span className="text-[11px] text-navy-400">Saving…</span>}
+          {notesSaveStatus === "saved" && <span className="text-[11px] text-green-500">Saved</span>}
+        </div>
+        <textarea
+          value={notes}
+          onChange={e => handleNotesChange(e.target.value)}
+          placeholder="Add notes, context, decisions…"
+          rows={4}
+          className="w-full text-[13px] text-navy-800 bg-transparent border-none outline-none resize-none font-[inherit] placeholder:text-navy-300 leading-relaxed"
+        />
       </div>
 
       {loading ? (
