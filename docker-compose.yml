@@ -24,10 +24,16 @@ networks:
   advisorintel_edge:
     name: advisorintel_edge
     external: true
+  advisoryiq_edge:
+    name: advisoryiq_edge
+    external: true
 
 volumes:
   caddy_data:
   caddy_config:
+  radicale_config:
+    external: true
+    name: workspace_radicale_config
 
 services:
 
@@ -46,7 +52,7 @@ services:
       DAV_HOST: ${DAV_HOST}
       STATUS_HOST: ${STATUS_HOST}
       LOGS_HOST: ${LOGS_HOST}
-      ADVISOROS_HOST: ${ADVISOROS_HOST}
+      ADVISORIQ_HOST: ${ADVISORIQ_HOST}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -54,7 +60,7 @@ services:
       - /opt/advisoros/frontend/dist:/var/www/advisoros:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks: [edge, advisory_edge, advisorintel_edge]
+    networks: [edge, advisory_edge, advisorintel_edge, advisoryiq_edge]
     depends_on: [web, api]
     deploy:
       resources:
@@ -206,6 +212,7 @@ services:
     restart: unless-stopped
     volumes:
       - /data/radicale:/data
+      - radicale_config:/config
       - ./radicale/config:/config/config:ro
     networks: [internal, edge]
     deploy:
