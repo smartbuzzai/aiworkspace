@@ -65,20 +65,57 @@
 }
 
 
-# ─── AdvisoryIQ ────────────────────────────────────────────────
-{$ADVISOROS_HOST} {
+# ─── Smart Advisor (primary domain) ───────────────────────────
+advisor.smartbuzzai.com {
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "SAMEORIGIN"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
 		-Server
 	}
 
 	encode zstd gzip
-	reverse_proxy advisoriq:3000
+
+	reverse_proxy 172.18.0.1:8000 {
+		flush_interval -1
+	}
+}
+
+# ─── SmartAD ───────────────────────────────────────────────────
+smartad.smartbuzzai.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	encode zstd gzip
+
+	reverse_proxy 172.18.0.1:8000 {
+		flush_interval -1
+	}
+}
+
+# ─── Smart Advisor OS ──────────────────────────────────────────
+advisoros.smartbuzzai.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	encode zstd gzip
+
+	reverse_proxy 172.18.0.1:8000 {
+		flush_interval -1
+	}
 }
 
 # ─── Advisor Performance Suite ─────────────────────────────────
@@ -94,6 +131,37 @@ advisorps.smartbuzzai.com {
 
 	encode zstd gzip
 	reverse_proxy advisorps:3001
+}
+
+# ─── AdvisoryIQ ────────────────────────────────────────────────
+{$ADVISORIQ_HOST} {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	encode zstd gzip
+
+	# AI and TTS routes stream — must not buffer
+	handle /api/ai* {
+		reverse_proxy advisoriq-node:4000 {
+			flush_interval -1
+		}
+	}
+
+	handle /api/tts* {
+		reverse_proxy advisoriq-node:4000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy advisoriq-node:4000
+	}
 }
 
 # ─── MinIO console (file admin) ────────────────────────────────
@@ -143,30 +211,6 @@ advisorps.smartbuzzai.com {
 	reverse_proxy dozzle:8080
 }
 
-# ─── ACE (personal AI assistant web app) ──────────────────────
-aces.smartbuzzai.com {
-	header {
-		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "SAMEORIGIN"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		# microphone=(self) required for voice input
-		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
-		-Server
-	}
-
-	# SSE stream must never be buffered — tokens arrive in real time
-	handle /api/chat/stream {
-		reverse_proxy ace-webapp:8080 {
-			flush_interval -1
-		}
-	}
-
-	handle {
-		encode zstd gzip
-		reverse_proxy ace-webapp:8080
-	}
-}
 
 # ─── Spartan VPS Dashboard ─────────────────────────────────────
 spartan.smartbuzzai.com {
