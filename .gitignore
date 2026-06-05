@@ -13,3 +13,6 @@ data/
 *.bak
 *.bak.*
 *.bak-*
+
+# scratch screenshots
+workspace/kview.png

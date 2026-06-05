@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ACE — System Architecture</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #08080d;
+  color: #d8d8f0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+h1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #00d4ff;
+  text-shadow: 0 0 20px rgba(0,212,255,0.4);
+  margin-bottom: 0.35rem;
+}
+.subtitle {
+  font-size: 0.78rem;
+  color: #555568;
+  margin-bottom: 2.5rem;
+  letter-spacing: 0.05em;
+}
+
+/* ── layout ── */
+.arch {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.layer {
+  position: relative;
+}
+
+.layer-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #383850;
+  margin-bottom: 0.6rem;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+/* ── boxes ── */
+.box {
+  border-radius: 10px;
+  border: 1px solid #252532;
+  background: #0f0f16;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  transition: border-color 0.2s;
+  min-width: 160px;
+}
+
+.box:hover { border-color: #30303f; }
+
+.box-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.box-desc {
+  font-size: 0.72rem;
+  color: #555568;
+  line-height: 1.5;
+}
+
+.box-tag {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  margin-top: 0.15rem;
+  width: fit-content;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
+}
+
+.item {
+  font-size: 0.72rem;
+  color: #8080a0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  line-height: 1.4;
+}
+
+.item::before {
+  content: '▸';
+  color: #30303f;
+  flex-shrink: 0;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+/* ── color themes ── */
+.c-cyan   { color: #00d4ff; }
+.c-indigo { color: #6366f1; }
+.c-green  { color: #00e87a; }
+.c-yellow { color: #ffc700; }
+.c-orange { color: #ff6b35; }
+.c-purple { color: #c084fc; }
+.c-red    { color: #ff3d5a; }
+.c-muted  { color: #555568; }
+.c-text   { color: #8080a0; }
+
+.b-cyan   { border-color: rgba(0,212,255,0.2); background: rgba(0,212,255,0.03); }
+.b-indigo { border-color: rgba(99,102,241,0.25); background: rgba(99,102,241,0.03); }
+.b-green  { border-color: rgba(0,232,122,0.2); background: rgba(0,232,122,0.03); }
+.b-yellow { border-color: rgba(255,199,0,0.2); background: rgba(255,199,0,0.03); }
+.b-purple { border-color: rgba(192,132,252,0.2); background: rgba(192,132,252,0.03); }
+.b-orange { border-color: rgba(255,107,53,0.2); background: rgba(255,107,53,0.03); }
+
+.tag-container { background: rgba(0,212,255,0.12); color: #00d4ff; }
+.tag-python    { background: rgba(99,102,241,0.15); color: #818cf8; }
+.tag-node      { background: rgba(0,232,122,0.12); color: #00e87a; }
+.tag-sqlite    { background: rgba(255,199,0,0.12); color: #ffc700; }
+.tag-external  { background: rgba(255,107,53,0.12); color: #ff6b35; }
+.tag-caddy     { background: rgba(192,132,252,0.15); color: #c084fc; }
+.tag-volume    { background: rgba(96,96,120,0.2); color: #8080a0; }
+
+.dot-green  { background: #00e87a; box-shadow: 0 0 5px rgba(0,232,122,0.6); }
+.dot-cyan   { background: #00d4ff; box-shadow: 0 0 5px rgba(0,212,255,0.6); }
+.dot-yellow { background: #ffc700; }
+.dot-purple { background: #c084fc; }
+.dot-orange { background: #ff6b35; }
+.dot-muted  { background: #30303f; }
+
+/* ── arrows between layers ── */
+.arrow-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  color: #2a2a3a;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+}
+
+.arrow-row span { color: #30303f; font-size: 1.1rem; }
+.arrow-label { color: #383850; font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* ── container group ── */
+.container-group {
+  border: 1px solid #1a1a26;
+  border-radius: 12px;
+  padding: 1rem;
+  background: rgba(255,255,255,0.01);
+  position: relative;
+}
+.container-label {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  background: #08080d;
+  padding: 0 6px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #2a2a3a;
+}
+
+/* ── divider ── */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #1e1e2a 20%, #1e1e2a 80%, transparent);
+  margin: 0.35rem 0;
+}
+
+/* ── legend ── */
+.legend {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 1rem 1.25rem;
+  background: #0f0f16;
+  border: 1px solid #1a1a26;
+  border-radius: 10px;
+  margin-top: 2rem;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.7rem;
+  color: #555568;
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── flex helpers ── */
+.flex-1 { flex: 1; }
+.flex-2 { flex: 2; }
+.flex-3 { flex: 3; }
+.min0   { min-width: 0; }
+
+.row-wrap { flex-wrap: wrap; }
+
+/* ── network badge ── */
+.net-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(30,30,42,0.8);
+  border: 1px solid #252532;
+  color: #383850;
+  white-space: nowrap;
+}
+
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.1rem 0 0.5rem;
+}
+.section-divider-line { flex: 1; height: 1px; background: #1a1a26; }
+.section-divider-text { font-size: 0.6rem; color: #2a2a3a; letter-spacing: 0.1em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<h1>ACE — System Architecture</h1>
+<p class="subtitle">ClaudeClaw AI assistant platform &nbsp;·&nbsp; aces.smartbuzzai.com</p>
+
+<div class="arch">
+
+  <!-- ── Internet / Browser ── -->
+  <div class="layer">
+    <div class="layer-label">Client</div>
+    <div class="row">
+      <div class="box b-cyan flex-1">
+        <div class="box-title"><span class="dot dot-cyan"></span> <span class="c-cyan">Browser</span></div>
+        <div class="items">
+          <div class="item">Vanilla JS SPA (no build step)</div>
+          <div class="item">Dashboard · Chat · Mission Control</div>
+          <div class="item">Scheduled Tasks · Memories</div>
+          <div class="item">Voice input (MediaRecorder) · TTS playback</div>
+          <div class="item">File/image/video upload (drag-and-drop)</div>
+          <div class="item">SSE real-time stream (EventSource)</div>
+        </div>
+        <div class="box-tag tag-external">HTTPS / TLS 1.3 / HTTP3</div>
+      </div>
+      <div class="box flex-1">
+        <div class="box-title c-muted">Telegram</div>
+        <div class="items">
+          <div class="item">Primary mobile input channel</div>
+          <div class="item">Text · voice notes · photos · docs</div>
+          <div class="item">File send markers parsed by bot</div>
+          <div class="item">Replies go via Telegram Bot API</div>
+        </div>
+        <div class="box-tag tag-external">Bot API</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="arrow-row">
+    <div class="arrow-label">HTTPS · aces.smartbuzzai.com</div>
+    <span>↕</span>
+    <div class="arrow-label">Telegram Bot API</div>
+  </div>
+
+  <!-- ── Caddy ── -->
+  <div class="layer">
+    <div class="layer-label">Reverse Proxy &nbsp;·&nbsp; workspace_edge network</div>
+    <div class="row">
+      <div class="box b-purple flex-1">
+        <div class="box-title"><span class="c-purple">Caddy</span></div>
+        <div class="items">
+          <div class="item">Auto TLS via Let's Encrypt</div>
+          <div class="item">HTTP/1.1 + HTTP/2 + HTTP/3 (QUIC)</div>
+          <div class="item">Security headers (HSTS, X-Frame, CSP)</div>
+          <div class="item"><code style="color:#6366f1">/api/chat/stream</code> — flush_interval -1 (SSE unbuffered)</div>
+          <div class="item">All other routes — zstd/gzip + proxy to ace-webapp:8080</div>
+          <div class="item">Permissions-Policy: microphone=(self)</div>
+        </div>
+        <div class="box-tag tag-caddy">Caddy 2</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="arrow-row">
+    <span>↕</span>
+    <div class="arrow-label">HTTP/1.1 · Docker bridge · workspace_edge + default networks</div>
+  </div>
+
+  <!-- ── Python Webapp ── -->
+  <div class="layer">
+    <div class="layer-label">Python Webapp &nbsp;·&nbsp; ace-webapp · port 8080</div>
+    <div class="container-group">
+      <div class="container-label">Docker container — FastAPI / Uvicorn</div>
+
+      <div class="row">
+        <!-- Auth -->
+        <div class="box b-indigo" style="min-width:175px">
+          <div class="box-title c-indigo">Auth</div>
+          <div class="items">
+            <div class="item">POST /auth/register</div>
+            <div class="item">POST /auth/login</div>
+            <div class="item">GET /auth/me</div>
+            <div class="item">JWT (HS256) — 7d expiry</div>
+            <div class="item">bcrypt password hashing</div>
+            <div class="item">chat_id embedded in token</div>
+          </div>
+          <div class="box-tag tag-sqlite">SQLite — webapp.db</div>
+        </div>
+
+        <!-- Chat -->
+        <div class="box b-cyan flex-1">
+          <div class="box-title c-cyan">Chat Routes</div>
+          <div class="items">
+            <div class="item">GET /api/chat/stream — SSE fan-out per chat_id</div>
+            <div class="item">POST /api/chat/send → forwards to node backend</div>
+            <div class="item">GET /api/chat/history — last N turns from node DB</div>
+            <div class="item">DELETE /api/chat/session — clears session in node</div>
+            <div class="item">?token= query param (EventSource workaround)</div>
+          </div>
+          <div class="box-tag tag-python">FastAPI SSE</div>
+        </div>
+
+        <!-- Media -->
+        <div class="box" style="min-width:175px">
+          <div class="box-title c-yellow">Media Pipeline</div>
+          <div class="items">
+            <div class="item">POST /api/media/upload → /shared/uploads</div>
+            <div class="item">POST /api/media/transcribe — Whisper STT</div>
+            <div class="item">POST /api/media/tts — ElevenLabs / XTTS</div>
+            <div class="item">POST /api/media/analyze-video — Gemini</div>
+          </div>
+          <div class="box-tag tag-python">Services layer</div>
+        </div>
+
+        <!-- Proxy -->
+        <div class="box b-green" style="min-width:175px">
+          <div class="box-title c-green">Node Proxy</div>
+          <div class="items">
+            <div class="item">GET/POST /api/node/{path}</div>
+            <div class="item">JWT auth required (webapp user)</div>
+            <div class="item">Injects DASHBOARD_TOKEN as ?token=</div>
+            <div class="item">Forwards to http://node:3141/api/{path}</div>
+            <div class="item">SSE pass-through (flush_interval -1)</div>
+          </div>
+          <div class="box-tag tag-python">httpx async proxy</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Services row -->
+      <div class="section-divider">
+        <div class="section-divider-line"></div>
+        <div class="section-divider-text">Python Services</div>
+        <div class="section-divider-line"></div>
+      </div>
+      <div class="row">
+        <div class="box flex-1" style="padding:0.75rem 1rem">
+          <div class="box-title c-yellow" style="font-size:0.7rem">WhisperService</div>
+          <div class="box-desc">OpenAI Whisper / Groq STT API — audio/webm → text</div>
+        </div>
+        <div class="box flex-1" style="padding:0.75rem 1rem">
+          <div class="box-title c-orange" style="font-size:0.7rem">TTS Service</div>
+          <div class="box-desc">ElevenLabs or XTTS — text → audio stream</div>
+        </div>
+        <div class="box flex-1" style="padding:0.75rem 1rem">
+          <div class="box-title c-purple" style="font-size:0.7rem">GeminiService</div>
+          <div class="box-desc">Google Gemini — video file → description</div>
+        </div>
+        <div class="box flex-1" style="padding:0.75rem 1rem">
+          <div class="box-title c-green" style="font-size:0.7rem">NodeClient</div>
+          <div class="box-desc">Typed HTTP client for node backend API</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="arrow-row">
+    <span>↕</span>
+    <div class="arrow-label">HTTP · internal Docker network · http://node:3141</div>
+    <span>↕</span>
+    <div class="arrow-label">Telegram Bot API (outbound)</div>
+  </div>
+
+  <!-- ── Node Backend ── -->
+  <div class="layer">
+    <div class="layer-label">Node.js Backend &nbsp;·&nbsp; ace-node · port 3141</div>
+    <div class="container-group">
+      <div class="container-label">Docker container — ClaudeClaw core (TypeScript)</div>
+
+      <div class="row">
+
+        <!-- Agents -->
+        <div class="box b-green flex-2">
+          <div class="box-title"><span class="dot dot-green"></span> <span class="c-green">Agent Runner</span></div>
+          <div class="items">
+            <div class="item">Claude Code SDK — query() subprocess per turn</div>
+            <div class="item">Per-agent CLAUDE.md system prompt injection</div>
+            <div class="item">Tool execution: Bash, Read, Edit, Write, WebSearch…</div>
+            <div class="item">Auth: ANTHROPIC_AUTH_TOKEN from ~/.claude/.credentials.json</div>
+            <div class="item">Env scrubbing: strips secrets before subprocess (security.ts)</div>
+            <div class="item">PIN lock · idle auto-lock · emergency kill phrase</div>
+            <div class="item">Audit log: every action → SQLite + structured logger</div>
+          </div>
+          <div class="divider"></div>
+          <div class="row" style="gap:0.5rem;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:0.25rem;flex:1;min-width:120px">
+              <div style="font-size:0.62rem;color:#30303f;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.1rem">Agents</div>
+              <div class="item" style="color:#00d4ff">● main</div>
+              <div class="item" style="color:#ffc700">● research</div>
+              <div class="item" style="color:#00e87a">● comms</div>
+              <div class="item" style="color:#c084fc">● content</div>
+              <div class="item" style="color:#ff6b35">● ops</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0.25rem;flex:1;min-width:140px">
+              <div style="font-size:0.62rem;color:#30303f;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:0.1rem">Config (per agent)</div>
+              <div class="item">YAML config + CLAUDE.md</div>
+              <div class="item">Model override (e.g. opus, sonnet)</div>
+              <div class="item">MCP servers per-agent</div>
+              <div class="item">Obsidian vault path</div>
+              <div class="item">Dedicated Telegram token</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:0.75rem;flex:1;min-width:0">
+
+          <!-- Scheduler -->
+          <div class="box b-yellow" style="flex:1">
+            <div class="box-title c-yellow">Scheduler</div>
+            <div class="items">
+              <div class="item">Cron-based task runner (node-cron)</div>
+              <div class="item">schedule-cli.js — create/list/pause/delete</div>
+              <div class="item">Persisted in SQLite · auto-assigned to agent</div>
+            </div>
+          </div>
+
+          <!-- Orchestrator / Mission -->
+          <div class="box b-orange" style="flex:1">
+            <div class="box-title c-orange">Mission/Orchestrator</div>
+            <div class="items">
+              <div class="item">mission-cli.js — queue tasks to agents</div>
+              <div class="item">Async: queued → running → done/failed</div>
+              <div class="item">Auto-assign by priority</div>
+            </div>
+          </div>
+
+          <!-- War Room -->
+          <div class="box" style="flex:1;padding:0.7rem">
+            <div class="box-title c-purple" style="font-size:0.7rem">War Room</div>
+            <div class="box-desc">Multi-agent coordination — shared task board, text events orchestrator, tool policy enforcement</div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+
+        <!-- Memory -->
+        <div class="box b-cyan flex-2">
+          <div class="box-title c-cyan">Memory System</div>
+          <div class="items">
+            <div class="item">Auto-extraction: entities, topics, importance score</div>
+            <div class="item">Salience decay sweep (background)</div>
+            <div class="item">Periodic consolidation (LLM-summarised)</div>
+            <div class="item">Vector embeddings for semantic recall</div>
+            <div class="item">Injected into system prompt as [Memory context]</div>
+            <div class="item">Conversation log → searchable full history</div>
+          </div>
+          <div class="box-tag tag-sqlite">SQLite · claudeclaw.db · /store</div>
+        </div>
+
+        <!-- Hive Mind -->
+        <div class="box flex-1">
+          <div class="box-title c-indigo">Hive Mind</div>
+          <div class="items">
+            <div class="item">Activity log — every agent action</div>
+            <div class="item">Streamed to dashboard via SSE</div>
+            <div class="item">Types: tool · message · memory · error</div>
+          </div>
+        </div>
+
+        <!-- Dashboard API -->
+        <div class="box b-indigo flex-1">
+          <div class="box-title c-indigo">Dashboard API</div>
+          <div class="items">
+            <div class="item">GET /api/agents — agent status + stats</div>
+            <div class="item">GET /api/tokens — cost/turn counters</div>
+            <div class="item">GET /api/hive-mind — activity entries</div>
+            <div class="item">GET /api/memories — memory stats + list</div>
+            <div class="item">GET /api/mission/tasks — kanban data</div>
+            <div class="item">GET /api/tasks — scheduled tasks</div>
+            <div class="item">Auth: ?token=DASHBOARD_TOKEN</div>
+          </div>
+          <div class="box-tag tag-node">Fastify + SSE</div>
+        </div>
+
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Integrations row -->
+      <div class="section-divider">
+        <div class="section-divider-line"></div>
+        <div class="section-divider-text">Integrations &amp; Skills</div>
+        <div class="section-divider-line"></div>
+      </div>
+      <div class="row">
+        <div class="box flex-1" style="padding:0.65rem 0.9rem">
+          <div class="box-title c-green" style="font-size:0.68rem">Telegram Bot</div>
+          <div class="box-desc">Text · voice · photos · file markers — main input/output channel</div>
+        </div>
+        <div class="box flex-1" style="padding:0.65rem 0.9rem">
+          <div class="box-title c-cyan" style="font-size:0.68rem">Daily.ai Voice</div>
+          <div class="box-desc">Real-time voice bridge — WebRTC rooms, STT, TTS pipeline</div>
+        </div>
+        <div class="box flex-1" style="padding:0.65rem 0.9rem">
+          <div class="box-title c-purple" style="font-size:0.68rem">Slack</div>
+          <div class="box-desc">slack-cli · user/bot/app tokens · channel read/write</div>
+        </div>
+        <div class="box flex-1" style="padding:0.65rem 0.9rem">
+          <div class="box-title c-yellow" style="font-size:0.68rem">Skill Registry</div>
+          <div class="box-desc">~/.claude/skills/ — gmail, calendar, browser, maestro, todo…</div>
+        </div>
+        <div class="box flex-1" style="padding:0.65rem 0.9rem">
+          <div class="box-title c-orange" style="font-size:0.68rem">MCP Servers</div>
+          <div class="box-desc">Per-agent MCP config — Notion, Calendar, Drive, custom servers</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- arrow -->
+  <div class="arrow-row">
+    <span>↕</span>
+    <div class="arrow-label">External APIs · Anthropic · ElevenLabs · Google · Groq</div>
+    <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+    <div class="arrow-label">Docker volumes · node_store · uploads · webapp_data</div>
+  </div>
+
+  <!-- ── Storage + External APIs ── -->
+  <div class="layer">
+    <div class="layer-label">Storage &amp; External Services</div>
+    <div class="row">
+
+      <div class="box b-yellow flex-1">
+        <div class="box-title c-yellow">node_store volume</div>
+        <div class="items">
+          <div class="item">claudeclaw.db — memories, conversation_log, mission_tasks, scheduled_tasks, token_usage, audit_log, sessions, embeddings</div>
+        </div>
+        <div class="box-tag tag-sqlite">SQLite · /app/store</div>
+      </div>
+
+      <div class="box flex-1">
+        <div class="box-title c-muted">uploads volume</div>
+        <div class="items">
+          <div class="item">Shared between node + webapp containers</div>
+          <div class="item">Images · audio · video · PDFs · documents</div>
+          <div class="item">/shared/uploads</div>
+        </div>
+        <div class="box-tag tag-volume">Docker volume</div>
+      </div>
+
+      <div class="box flex-1">
+        <div class="box-title c-muted">webapp_data volume</div>
+        <div class="items">
+          <div class="item">webapp.db — users, JWT tokens</div>
+          <div class="item">/shared/data</div>
+        </div>
+        <div class="box-tag tag-sqlite">SQLite · webapp-only</div>
+      </div>
+
+      <div class="box flex-1">
+        <div class="box-title c-muted">~/.claude (bind mount)</div>
+        <div class="items">
+          <div class="item">.credentials.json — OAuth access token</div>
+          <div class="item">ANTHROPIC_AUTH_TOKEN extracted at runtime</div>
+          <div class="item">Bypasses file-based OAuth refresh in container</div>
+        </div>
+        <div class="box-tag tag-volume">Bind mount · read-only in webapp</div>
+      </div>
+
+    </div>
+
+    <div class="row" style="margin-top:0.75rem">
+
+      <div class="box flex-1" style="padding:0.75rem 1rem">
+        <div class="box-title c-red" style="font-size:0.7rem">Anthropic API</div>
+        <div class="box-desc">Claude Code SDK subprocess — claude CLI spawned per agent turn · claude-opus-4-6 / sonnet-4-6</div>
+        <div class="box-tag tag-external">ANTHROPIC_AUTH_TOKEN</div>
+      </div>
+
+      <div class="box flex-1" style="padding:0.75rem 1rem">
+        <div class="box-title c-purple" style="font-size:0.7rem">Google Gemini</div>
+        <div class="box-desc">Video analysis — gemini-2.0-flash · GOOGLE_API_KEY</div>
+        <div class="box-tag tag-external">REST API</div>
+      </div>
+
+      <div class="box flex-1" style="padding:0.75rem 1rem">
+        <div class="box-title c-orange" style="font-size:0.7rem">ElevenLabs / XTTS</div>
+        <div class="box-desc">Text-to-speech · ELEVENLABS_API_KEY</div>
+        <div class="box-tag tag-external">REST API</div>
+      </div>
+
+      <div class="box flex-1" style="padding:0.75rem 1rem">
+        <div class="box-title c-cyan" style="font-size:0.7rem">Groq / OpenAI</div>
+        <div class="box-desc">Whisper STT transcription · GROQ_API_KEY</div>
+        <div class="box-tag tag-external">REST API</div>
+      </div>
+
+      <div class="box flex-1" style="padding:0.75rem 1rem">
+        <div class="box-title c-green" style="font-size:0.7rem">Daily.ai</div>
+        <div class="box-desc">WebRTC voice rooms · DAILY_API_KEY · DAILY_DOMAIN</div>
+        <div class="box-tag tag-external">REST + WebRTC</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Network diagram note ── -->
+  <div class="layer">
+    <div class="layer-label">Docker Networks</div>
+    <div class="row">
+      <div class="box flex-1" style="padding:0.8rem 1rem">
+        <div class="box-title" style="color:#30303f">default (bridge)</div>
+        <div class="box-desc">Internal: node ↔ webapp — HTTP on internal hostnames (node:3141)</div>
+      </div>
+      <div class="box b-purple flex-1" style="padding:0.8rem 1rem">
+        <div class="box-title c-purple">workspace_edge (external)</div>
+        <div class="box-desc">Caddy ↔ ace-webapp — shared with other workspace services at aces.smartbuzzai.com:8080</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- legend -->
+<div class="legend">
+  <div style="font-size:0.68rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#383850;margin-right:0.5rem">Legend</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(0,212,255,0.3);border:1px solid rgba(0,212,255,0.4)"></div> Browser / real-time</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(99,102,241,0.3);border:1px solid rgba(99,102,241,0.4)"></div> Auth / Python webapp</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(0,232,122,0.3);border:1px solid rgba(0,232,122,0.4)"></div> Agent runtime / Node</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(255,199,0,0.3);border:1px solid rgba(255,199,0,0.4)"></div> Storage / SQLite</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(192,132,252,0.3);border:1px solid rgba(192,132,252,0.4)"></div> Proxy / Caddy / War Room</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(255,107,53,0.3);border:1px solid rgba(255,107,53,0.4)"></div> External APIs</div>
+  <div class="legend-item"><div class="legend-dot" style="background:rgba(96,96,120,0.25);border:1px solid #252532"></div> Docker volumes</div>
+</div>
+
+<p style="font-size:0.65rem;color:#252532;text-align:center;margin-top:1.5rem;letter-spacing:0.06em">Generated 2026-05-09 &nbsp;·&nbsp; /opt/aiworkspace/docs/ace-architecture.html</p>
+
+</body>
+</html>
