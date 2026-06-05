@@ -231,13 +231,26 @@ new Worker("imap-sync", async (job) => {
       lock.release();
     }
   } catch (err) {
-    console.error("imap sync error:", err);
-    await db.query(
-      `UPDATE email_accounts
-          SET sync_status = 'error', sync_error = $2
-        WHERE id = $1`,
-      [account_id, err.message]
-    );
+    // Transient network/DNS blips (e.g. EAI_AGAIN) are expected and recovered
+    // by BullMQ's retry (attempts: 3 + backoff). Only treat the final attempt,
+    // or non-transient errors, as a real sync failure — otherwise we'd spam the
+    // log with stacks and flap sync_status to 'error' between a blip and its retry.
+    const TRANSIENT = ["EAI_AGAIN", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "ENOTFOUND"];
+    const isTransient = TRANSIENT.includes(err.code);
+    const attempt = job.attemptsStarted || (job.attemptsMade + 1);
+    const isFinalAttempt = attempt >= (job.opts.attempts ?? 1);
+
+    if (isTransient && !isFinalAttempt) {
+      console.warn(`imap sync transient (${err.code}), retry ${attempt}/${job.opts.attempts} for account ${account_id}`);
+    } else {
+      console.error("imap sync error:", err);
+      await db.query(
+        `UPDATE email_accounts
+            SET sync_status = 'error', sync_error = $2
+          WHERE id = $1`,
+        [account_id, err.message]
+      );
+    }
     throw err;
   } finally {
     await client.logout().catch(() => {});
