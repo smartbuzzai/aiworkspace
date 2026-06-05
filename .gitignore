@@ -8,3 +8,8 @@ apps/*/node_modules/
 apps/*/.next/
 apps/*/dist/
 data/
+
+# local backups
+*.bak
+*.bak.*
+*.bak-*
