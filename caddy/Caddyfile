@@ -230,3 +230,21 @@ spartan.smartbuzzai.com {
 	}
 	reverse_proxy spartan:8000
 }
+
+# ─── Smart Advisor X ───────────────────────────────────────────
+smartadvisorx.smartbuzzai.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+		-Server
+	}
+
+	encode zstd gzip
+
+	reverse_proxy 172.18.0.1:8080 {
+		flush_interval -1
+	}
+}
